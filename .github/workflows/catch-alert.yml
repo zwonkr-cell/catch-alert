@@ -1,0 +1,70 @@
+name: Catch Job Alert
+
+# ─────────────────────────────────────────────────────────────
+# 매시 정각(UTC 정각 = KST 정각)에 캐치 채용공고를 확인해
+# 새 공고가 있으면 텔레그램으로 알립니다.
+# 상태(seen_ids.json)는 실행 후 리포지토리에 커밋해 다음 실행이 이어받습니다.
+# ─────────────────────────────────────────────────────────────
+
+on:
+  schedule:
+    - cron: "0 * * * *"      # 매시 0분. (GitHub 스케줄은 몇 분 지연될 수 있음 - 정상)
+  workflow_dispatch:          # 수동 실행 버튼(테스트용)
+    inputs:
+      mode:
+        description: "실행 모드"
+        required: false
+        default: "run"
+        type: choice
+        options: [run, test, dry-run]
+
+# seen_ids.json 을 push 하려면 쓰기 권한 필요
+permissions:
+  contents: write
+
+# 실행이 겹치지 않게 직렬화(상태파일 push 충돌 방지)
+concurrency:
+  group: catch-alert
+  cancel-in-progress: false
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # 외부 패키지가 없어 pip install 단계가 없습니다(표준 라이브러리만 사용).
+
+      - name: Run alert
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_IDS: ${{ secrets.CHAT_IDS }}
+          # api_url 은 config.json 에 있어 별도 시크릿이 필요 없습니다(민감정보 아님).
+          # API_URL: ${{ secrets.API_URL }}
+        run: |
+          MODE="${{ github.event.inputs.mode }}"
+          if [ "$MODE" = "test" ]; then
+            python catch_alert.py --test
+          elif [ "$MODE" = "dry-run" ]; then
+            python catch_alert.py --dry-run
+          else
+            python catch_alert.py
+          fi
+
+      - name: Persist state (seen_ids.json)
+        if: always()   # 스크립트가 도중에 실패해도 이미 보낸 공고 기록은 저장
+        run: |
+          if [ -n "$(git status --porcelain seen_ids.json)" ]; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add seen_ids.json
+            git commit -m "chore: update seen_ids.json [skip ci]"
+            git push
+          else
+            echo "상태 변경 없음 - 커밋 생략"
+          fi

@@ -1,0 +1,11 @@
+{
+  "_comment": "공개 리포이므로 개인정보(토큰/chat_id)를 이 파일에 넣지 마세요. GitHub Secret 으로 주입합니다: BOT_TOKEN, CHAT_IDS(콤마구분). 로컬 테스트는 $env:BOT_TOKEN, $env:CHAT_IDS.",
+  "bot_token": "",
+  "chat_ids": [],
+  "api_url": "https://www.catch.co.kr/api/v1.0/recruit/information/getRecruitList?Keyword=&JobCode=14,02,03&Sido=%EC%84%9C%EC%9A%B8,%EC%9D%B8%EC%B2%9C,%EA%B2%BD%EA%B8%B0&Career=1,4&JCode=&Size=1,3,6,10&EduLevel=5&WorkPosition=1,4&CompID=&GroupCode=&Sort=0&curpage=1&Priority=&pageSize=30&onRecruitYN=Y&ExceptIDList=",
+  "request_timeout": 30,
+  "disable_web_page_preview": true,
+  "weekday_full": true,
+  "send_summary_on_first_run": true,
+  "max_notify_per_run": 20
+}

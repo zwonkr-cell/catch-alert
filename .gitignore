@@ -1,0 +1,12 @@
+# 로그 / 임시 / 캐시 (커밋하지 않음)
+catch_alert.log
+scheduler_stdout.log
+.catch_alert.lock
+__pycache__/
+*.pyc
+
+# 로컬 전용 설정(실제 토큰을 여기 넣고 싶을 때 사용, 절대 커밋 안 됨)
+config.local.json
+
+# 주의: seen_ids.json 은 일부러 추적합니다(GitHub Actions 가 상태를 커밋해야 함).
+#       config.json 도 추적하되, 안에 실제 bot_token 을 넣지 마세요(토큰은 Secret).
