@@ -29,6 +29,8 @@ from datetime import datetime, timezone, timedelta
 from urllib import request, parse
 from urllib.error import URLError, HTTPError
 
+import requests  # 캐치 수집(프록시 지원)용. 텔레그램 전송은 표준 urllib 유지.
+
 try:
     import msvcrt  # Windows 단일 인스턴스 락용
 except ImportError:
@@ -212,42 +214,108 @@ def save_seen(seen_set):
 
 
 # ─────────────────────────────────────────────────────────────
-# HTTP (재시도 포함)
+# HTTP: 직접 연결 → 실패(해외 IP 403) 시 한국 프록시 자동 탐색
+#   catch.co.kr 는 해외/클라우드 IP 를 403 으로 차단합니다.
+#   - 로컬(한국 IP): 직접 연결로 동작 (프록시 불필요)
+#   - GitHub Actions(해외 IP): 매 실행마다 최신 무료 한국 프록시 목록을 받아
+#     캐치에 실제로 통하는 프록시를 찾아 그 실행 내내 사용합니다.
+#   프록시를 못 찾으면 이번 실행은 실패(exit 1)로 표시되고, 다음 정각에 재시도합니다.
+#   (누락 없음: seen_ids 로 중복 관리하므로 놓친 공고는 다음 성공 실행에서 알림)
 # ─────────────────────────────────────────────────────────────
-def http_get_json(url, timeout, tries=3):
+REQ_HEADERS = {
+    "User-Agent": BROWSER_UA,
+    "Referer": "https://www.catch.co.kr/",
+    "Accept": "application/json, text/plain, */*",
+}
+PROXY_SOURCES = [
+    "https://proxylist.geonode.com/api/proxy-list?country=KR&protocols=http%2Chttps"
+    "&limit=100&page=1&sort_by=lastChecked&sort_type=desc",
+    "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=kr",
+]
+MAX_PROXY_TRIES = 40
+PROXY_TIMEOUT = 8
+
+
+def _small_test_url(cfg):
+    parts = parse.urlsplit(cfg["api_url"])
+    qs = dict(parse.parse_qsl(parts.query, keep_blank_values=True))
+    qs["pageSize"] = "5"
+    qs["curpage"] = "1"
+    return parse.urlunsplit((parts.scheme, parts.netloc, parts.path,
+                             parse.urlencode(qs), parts.fragment))
+
+
+def get_kr_proxy_candidates():
+    cands = []
+    for url in PROXY_SOURCES:
+        try:
+            r = requests.get(url, timeout=15)
+            if "geonode" in url:
+                for p in r.json().get("data", []):
+                    cands.append(f"{p['ip']}:{p['port']}")
+            else:
+                cands += [ln.strip() for ln in r.text.splitlines() if ":" in ln]
+        except Exception as e:
+            log.warning("프록시 목록 수집 실패(%s): %s", url[:45], e)
+    return list(dict.fromkeys(cands))  # 순서 유지 dedupe
+
+
+def resolve_transport(cfg):
+    """반환: proxies dict(프록시 사용) 또는 None(직접 연결). 둘 다 불가하면 예외."""
+    test_url = _small_test_url(cfg)
+    # 1) 직접 연결 (로컬 한국 IP 는 이걸로 끝)
+    try:
+        r = requests.get(test_url, headers=REQ_HEADERS, timeout=cfg["request_timeout"])
+        if r.status_code == 200 and "recruitData" in r.text:
+            log.info("직접 연결 성공 (프록시 불필요)")
+            return None
+        log.warning("직접 연결 status=%s → 한국 프록시 탐색", r.status_code)
+    except Exception as e:
+        log.warning("직접 연결 실패(%s) → 한국 프록시 탐색", e)
+    # 2) 한국 프록시 탐색
+    cands = get_kr_proxy_candidates()
+    log.info("한국 프록시 후보 %d개 중 통하는 것 탐색...", len(cands))
+    for p in cands[:MAX_PROXY_TRIES]:
+        prox = {"http": f"http://{p}", "https": f"http://{p}"}
+        try:
+            r = requests.get(test_url, headers=REQ_HEADERS, proxies=prox, timeout=PROXY_TIMEOUT)
+            if r.status_code == 200 and "recruitData" in r.text:
+                log.info("프록시 사용: %s", p)
+                return prox
+        except Exception:
+            continue
+    raise RuntimeError("작동하는 한국 프록시를 찾지 못했습니다(캐치 접근 불가).")
+
+
+def http_get_json(url, timeout, proxies=None, tries=3):
     last_err = None
+    to = timeout if proxies is None else PROXY_TIMEOUT
     for attempt in range(1, tries + 1):
         try:
-            req = request.Request(url, headers={
-                "User-Agent": BROWSER_UA,
-                "Referer": "https://www.catch.co.kr/",
-                "Accept": "application/json, text/plain, */*",
-            })
-            with request.urlopen(req, timeout=timeout) as resp:
-                raw = resp.read()
-            text = raw.decode("utf-8-sig", errors="replace")  # BOM 방어
-            return json.loads(text)
-        except HTTPError as e:
-            last_err = e
-            # 4xx 는 재시도 무의미 (URL/필터 문제) → 즉시 중단
-            if 400 <= e.code < 500 and e.code != 429:
-                log.error("캐치 API HTTP %s (재시도 안 함): %s", e.code, url)
-                raise
-            log.warning("캐치 API 오류(HTTP %s), %d/%d 재시도", e.code, attempt, tries)
-        except (URLError, TimeoutError, json.JSONDecodeError) as e:
+            r = requests.get(url, headers=REQ_HEADERS, proxies=proxies, timeout=to)
+            if r.status_code == 200:
+                # BOM 방어
+                return json.loads(r.content.decode("utf-8-sig", errors="replace"))
+            if 400 <= r.status_code < 500 and r.status_code != 429:
+                log.error("캐치 API HTTP %s (재시도 안 함)", r.status_code)
+                raise RuntimeError(f"캐치 API HTTP {r.status_code}")
+            log.warning("캐치 API 오류(HTTP %s), %d/%d 재시도", r.status_code, attempt, tries)
+        except (requests.RequestException, json.JSONDecodeError) as e:
             last_err = e
             log.warning("캐치 API 네트워크/파싱 오류(%s), %d/%d 재시도", e, attempt, tries)
         if attempt < tries:
             time.sleep(2 ** attempt)   # 2s, 4s
-    raise last_err
+    raise last_err or RuntimeError("캐치 수집 실패")
 
 
 def fetch_all(cfg):
     """
-    api_url 의 필터를 유지하되 pageSize/curpage 를 조절해 전체 공고를 수집.
-    intTotalRecordCount 를 맹신하지 않고, '가득 찬 페이지가 계속되면 더 읽고,
-    덜 찬(또는 빈) 페이지가 나오면 멈춘다'는 규칙으로 견고하게 페이징.
+    직접/프록시 경로를 정한 뒤, api_url 의 필터를 유지하되 pageSize/curpage 를
+    조절해 전체 공고를 수집. intTotalRecordCount 를 맹신하지 않고, 덜 찬(또는 빈)
+    페이지가 나오면 멈춘다는 규칙으로 견고하게 페이징.
     """
+    transport = resolve_transport(cfg)   # None(직접) 또는 proxies dict
+
     parts = parse.urlsplit(cfg["api_url"])
     qs = dict(parse.parse_qsl(parts.query, keep_blank_values=True))
     qs["pageSize"] = str(PAGE_SIZE)
@@ -258,7 +326,7 @@ def fetch_all(cfg):
         qs["curpage"] = str(page)
         url = parse.urlunsplit((parts.scheme, parts.netloc, parts.path,
                                 parse.urlencode(qs), parts.fragment))
-        data = http_get_json(url, cfg["request_timeout"])
+        data = http_get_json(url, cfg["request_timeout"], proxies=transport)
         batch = data.get("recruitData", []) or []
         if total is None:
             try:
@@ -490,8 +558,10 @@ def run(cfg, dry_run=False):
     try:
         items, total = fetch_all(cfg)
     except Exception as e:
-        log.error("공고 수집 실패로 이번 실행을 건너뜁니다: %s", e)
-        return
+        # 프록시 포함 수집 실패 → 이번 실행 실패로 '표시'(red X)하되,
+        # seen 은 그대로라 다음 성공 실행에서 놓친 공고까지 알림됨(누락 없음).
+        log.error("공고 수집 실패(직접+프록시 모두)로 이번 실행을 건너뜁니다: %s", e)
+        sys.exit(1)
 
     log.info("수집 완료: %d건 (총 %d건 보고됨)", len(items), total)
 
