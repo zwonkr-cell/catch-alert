@@ -304,6 +304,68 @@ def maybe_heartbeat(cfg, state, collected, new_count):
 
 
 # ─────────────────────────────────────────────────────────────
+# 일일 리포트: 매일 18시(KST) 이후 첫 실행 시, 전일 18시~당일 18시 신규 공고 요약
+# ─────────────────────────────────────────────────────────────
+REPORT_HOUR = 18           # KST 18시
+SENT_LOG_KEEP_HOURS = 48   # sent_log 보관 기간(리포트 24h 윈도우 여유 있게)
+
+
+def record_sent(state, company):
+    """전송한 신규 공고의 기업명+시각을 일일 리포트용으로 기록."""
+    state.setdefault("sent_log", []).append(
+        {"company": (company or "(기업명 없음)"), "at": _now_iso()})
+
+
+def prune_sent_log(state, keep_hours=SENT_LOG_KEEP_HOURS):
+    now = datetime.now(KST)
+    kept = []
+    for e in state.get("sent_log", []):
+        t = _parse_iso(e.get("at"))
+        if t and (now - t) <= timedelta(hours=keep_hours):
+            kept.append(e)
+    state["sent_log"] = kept
+
+
+def maybe_daily_report(cfg, state, now=None):
+    """매일 REPORT_HOUR 이후 첫 실행에서 하루 요약 리포트 1회 발송. (now: 테스트용 주입)"""
+    now = now or datetime.now(KST)
+    today_1800 = now.replace(hour=REPORT_HOUR, minute=0, second=0, microsecond=0)
+    today_str = now.strftime("%Y-%m-%d")
+
+    # 최초 실행: 이미 18시가 지났으면 오늘 리포트는 데이터가 없어 건너뜀(다음날부터)
+    if not state.get("report_initialized"):
+        state["report_initialized"] = True
+        if now >= today_1800:
+            state["last_report_date"] = today_str
+        return
+
+    if now < today_1800 or state.get("last_report_date") == today_str:
+        return
+
+    win_start = today_1800 - timedelta(days=1)
+    companies = []
+    n = 0
+    for e in state.get("sent_log", []):
+        t = _parse_iso(e.get("at"))
+        if t and win_start <= t < today_1800:
+            n += 1
+            c = e.get("company") or "(기업명 없음)"
+            if c not in companies:
+                companies.append(c)
+
+    header = (f"📊 [캐치봇] 일일 리포트\n"
+              f"({win_start.strftime('%m/%d %H:%M')} ~ {today_1800.strftime('%m/%d %H:%M')})")
+    if n:
+        body = (f"\n신규 공고 {n}건 · 기업 {len(companies)}곳\n\n"
+                + "\n".join(f"• {c}" for c in companies))
+    else:
+        body = "\n이 기간에 새로 올라온 공고가 없었어요."
+    _plain_send_all(cfg, header + body)
+    state["last_report_date"] = today_str
+    note_activity(state)   # 리포트도 '활동' → 하트비트 타이머 리셋
+
+
+# ─────────────────────────────────────────────────────────────
 # HTTP: 직접 연결 → 실패(해외 IP 403) 시 한국 프록시 자동 탐색
 #   catch.co.kr 는 해외/클라우드 IP 를 403 으로 차단합니다.
 #   - 로컬(한국 IP): 직접 연결로 동작 (프록시 불필요)
@@ -709,6 +771,7 @@ def run(cfg, state, dry_run=False):
             continue
         if notify_recipients(cfg["bot_token"], cfg["chat_ids"], text, cfg):
             newly_done.add(rid)
+            record_sent(state, it.get("CompName"))   # 일일 리포트용 기록
             log.info("전송 완료 RecruitID=%s (%s)", rid, it.get("CompName"))
         else:
             log.warning("전송 실패(일시적) RecruitID=%s → 다음 실행 때 재시도", rid)
@@ -777,6 +840,13 @@ def main():
         elif args.resend_latest > 0:
             resend_latest(cfg, args.resend_latest)
         else:
+            if not args.dry_run:
+                # 수집 실패와 무관하게 일일 리포트는 먼저 처리(놓치지 않도록)
+                try:
+                    maybe_daily_report(cfg, state)
+                except Exception as e:
+                    log.error("일일 리포트 처리 실패: %s", e)
+                prune_sent_log(state)
             run(cfg, state, dry_run=args.dry_run)
     except TelegramAuthError as e:
         # 토큰이 틀려 텔레그램 노티도 불가 → red X 로 표시
