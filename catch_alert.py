@@ -25,6 +25,7 @@ import time
 import html
 import logging
 import argparse
+import traceback
 from datetime import datetime, timezone, timedelta
 from urllib import request, parse
 from urllib.error import URLError, HTTPError
@@ -211,6 +212,95 @@ def save_seen(seen_set):
             time.sleep(1.0 * attempt)
     log.error("상태 저장 실패(권한/파일잠금 의심): %s → 다음 실행에서 재시도됩니다.", last_err)
     return False
+
+
+# ─────────────────────────────────────────────────────────────
+# 봇 상태(bot_state.json): 12h 무신규 하트비트 + 오류 중복 알림 방지용 타임스탬프
+# ─────────────────────────────────────────────────────────────
+STATE2_PATH = os.path.join(BASE_DIR, "bot_state.json")
+HEARTBEAT_HOURS = 12       # 이 시간 동안 새 공고가 없으면 '신규 없음' 노티
+ERROR_DEDUP_HOURS = 12     # 같은 오류는 이 시간에 한 번만 텔레그램 노티(스팸 방지)
+
+
+def load_bot_state():
+    if os.path.exists(STATE2_PATH):
+        try:
+            with open(STATE2_PATH, "r", encoding="utf-8-sig") as f:
+                d = json.load(f)
+                return d if isinstance(d, dict) else {}
+        except Exception:
+            pass
+    return {}
+
+
+def save_bot_state(state):
+    tmp = STATE2_PATH + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, STATE2_PATH)
+    except OSError as e:
+        log.error("bot_state 저장 실패: %s", e)
+
+
+def _now_iso():
+    return datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _parse_iso(s):
+    try:
+        return datetime.strptime(str(s), "%Y-%m-%d %H:%M:%S").replace(tzinfo=KST)
+    except Exception:
+        return None
+
+
+def _plain_send_all(cfg, text):
+    """모든 수신자에게 일반텍스트로 전송(오류/하트비트 노티용). 성공 수 반환."""
+    ok = 0
+    for cid in cfg["chat_ids"]:
+        try:
+            sent, _, _ = _post_telegram(cfg["bot_token"], cid, text[:3900], cfg, use_html=False)
+            ok += 1 if sent else 0
+        except Exception as e:
+            log.warning("노티 전송 실패 chat_id=%s: %s", cid, e)
+    return ok
+
+
+def notify_error(cfg, state, raw_text):
+    """오류 원문을 텔레그램으로 노티. 같은 오류는 ERROR_DEDUP_HOURS 에 한 번만."""
+    raw_text = (raw_text or "").strip() or "알 수 없는 오류"
+    sig = raw_text.splitlines()[-1][:120]     # 마지막 줄(예외 타입/메시지)을 서명으로
+    now = datetime.now(KST)
+    last_at = _parse_iso(state.get("last_error_at"))
+    if state.get("last_error_sig") == sig and last_at and \
+            (now - last_at) < timedelta(hours=ERROR_DEDUP_HOURS):
+        log.info("동일 오류 최근 노티됨 → 텔레그램 생략(스팸 방지)")
+        return
+    msg = ("⚠️ [캐치봇] 오류가 발생했어요 (원문):\n\n" + raw_text +
+           f"\n\n(발생 시각: {_now_iso()})")
+    _plain_send_all(cfg, msg)
+    state["last_error_sig"] = sig
+    state["last_error_at"] = _now_iso()
+
+
+def note_activity(state):
+    """새 공고 전송 등 '활동'이 있었음을 기록(하트비트 타이머 리셋)."""
+    state["last_activity_at"] = _now_iso()
+
+
+def maybe_heartbeat(cfg, state, collected, new_count):
+    """마지막 활동 후 HEARTBEAT_HOURS 지나도록 새 공고가 없으면 '신규 없음' 노티."""
+    now = datetime.now(KST)
+    last = _parse_iso(state.get("last_activity_at"))
+    if last is None:
+        state["last_activity_at"] = _now_iso()   # 최초: 타이머 시작(즉시 노티 방지)
+        return
+    if (now - last) >= timedelta(hours=HEARTBEAT_HOURS):
+        msg = (f"⏰ [캐치봇] 최근 {HEARTBEAT_HOURS}시간 내 새로 스크래핑된 채용공고가 없어요.\n"
+               f"수집완료 {collected}건, 신규후보 {new_count}건\n"
+               f"(확인 시각: {_now_iso()})")
+        _plain_send_all(cfg, msg)
+        state["last_activity_at"] = _now_iso()
 
 
 # ─────────────────────────────────────────────────────────────
@@ -551,17 +641,17 @@ def sort_key_oldest_first(it):
         return 0
 
 
-def run(cfg, dry_run=False):
+def run(cfg, state, dry_run=False):
     scraped_ts = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
     seen, is_fresh = load_seen()
 
     try:
         items, total = fetch_all(cfg)
-    except Exception as e:
-        # 프록시 포함 수집 실패 → 이번 실행 실패로 '표시'(red X)하되,
+    except Exception:
+        # 프록시 포함 수집 실패 → main() 이 오류 원문을 텔레그램으로 노티하도록 재전파.
         # seen 은 그대로라 다음 성공 실행에서 놓친 공고까지 알림됨(누락 없음).
-        log.error("공고 수집 실패(직접+프록시 모두)로 이번 실행을 건너뜁니다: %s", e)
-        sys.exit(1)
+        log.error("공고 수집 실패(직접+프록시 모두)")
+        raise
 
     log.info("수집 완료: %d건 (총 %d건 보고됨)", len(items), total)
 
@@ -584,6 +674,8 @@ def run(cfg, dry_run=False):
                    f"앞으로 <b>새로 올라온 공고</b>만 알려드릴게요.\n"
                    f"(등록 시각: {scraped_ts})")
             notify_recipients(cfg["bot_token"], cfg["chat_ids"], msg, cfg)
+        if not dry_run:
+            note_activity(state)
         return
 
     # ── 신규 공고 추출
@@ -591,6 +683,8 @@ def run(cfg, dry_run=False):
     log.info("신규 후보: %d건", len(new_items))
     if not new_items:
         log.info("새 공고 없음.")
+        if not dry_run:
+            maybe_heartbeat(cfg, state, len(items), 0)
         return
 
     # 오래된 것부터(작은 RecruitID) 전송
@@ -624,6 +718,7 @@ def run(cfg, dry_run=False):
         if save_seen(seen | newly_done):
             log.info("상태 저장: 이번에 %d건 추가 (누적 %d건)",
                      len(newly_done), len(seen | newly_done))
+        note_activity(state)   # 새 공고 전송 = 활동 → 하트비트 타이머 리셋
         # 미뤄둔 공고가 있으면 안내 1건
         if deferred:
             notice = (f"ℹ️ 조건에 맞는 새 공고가 많아 {len(newly_done)}건을 먼저 보냈어요. "
@@ -674,6 +769,7 @@ def main():
         return
 
     cfg = load_config()
+    state = load_bot_state()
 
     try:
         if args.test:
@@ -681,18 +777,24 @@ def main():
         elif args.resend_latest > 0:
             resend_latest(cfg, args.resend_latest)
         else:
-            run(cfg, dry_run=args.dry_run)
+            run(cfg, state, dry_run=args.dry_run)
     except TelegramAuthError as e:
+        # 토큰이 틀려 텔레그램 노티도 불가 → red X 로 표시
         log.error("봇 토큰이 잘못되었습니다(HTTP 401): %s. "
-                  "config.json 의 bot_token 을 BotFather 토큰으로 다시 확인하세요. "
-                  "이번 실행을 중단합니다(공고는 seen 처리하지 않음).", e)
+                  "Secret(BOT_TOKEN) 을 BotFather 토큰으로 다시 확인하세요.", e)
         sys.exit(1)
     except SystemExit:
         raise
     except Exception as e:
+        # 오류 원문을 텔레그램으로 노티(같은 오류는 12h 1회). Actions 이메일 스팸 방지 위해 exit 0(green).
         log.exception("예상치 못한 오류: %s", e)
-        sys.exit(1)
+        try:
+            notify_error(cfg, state, traceback.format_exc())
+        except Exception as ne:
+            log.error("오류 노티 전송 실패: %s", ne)
     finally:
+        if not args.dry_run:
+            save_bot_state(state)
         log.info("캐치 알림 실행 종료")
 
 

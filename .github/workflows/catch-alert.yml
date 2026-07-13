@@ -58,14 +58,14 @@ jobs:
             python catch_alert.py
           fi
 
-      - name: Persist state (seen_ids.json)
-        if: always()   # 스크립트가 도중에 실패해도 이미 보낸 공고 기록은 저장
+      - name: Persist state (seen_ids.json, bot_state.json)
+        if: always()   # 스크립트가 도중에 실패해도 상태(보낸 공고·하트비트·오류 타임스탬프) 저장
         run: |
-          if [ -n "$(git status --porcelain seen_ids.json)" ]; then
+          if [ -n "$(git status --porcelain seen_ids.json bot_state.json)" ]; then
             git config user.name  "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add seen_ids.json
-            git commit -m "chore: update seen_ids.json [skip ci]"
+            git add seen_ids.json bot_state.json
+            git commit -m "chore: update state [skip ci]"
             git push
           else
             echo "상태 변경 없음 - 커밋 생략"
