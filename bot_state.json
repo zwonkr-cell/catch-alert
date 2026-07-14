@@ -68,10 +68,18 @@
     {
       "company": "에스디바이오센서",
       "at": "2026-07-14 16:10:05"
+    },
+    {
+      "company": "지마켓",
+      "at": "2026-07-14 18:54:25"
+    },
+    {
+      "company": "현대종합금속",
+      "at": "2026-07-14 18:54:28"
     }
   ],
-  "last_activity_at": "2026-07-14 16:10:06",
-  "last_report_date": "2026-07-13",
+  "last_activity_at": "2026-07-14 18:54:29",
+  "last_report_date": "2026-07-14",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-14 11:00:02"
 }
