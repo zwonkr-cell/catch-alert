@@ -76,9 +76,21 @@
     {
       "company": "현대종합금속",
       "at": "2026-07-14 18:54:28"
+    },
+    {
+      "company": "삼일회계법인",
+      "at": "2026-07-15 10:55:41"
+    },
+    {
+      "company": "한영회계법인",
+      "at": "2026-07-15 10:55:43"
+    },
+    {
+      "company": "현대엔지비",
+      "at": "2026-07-15 10:55:45"
     }
   ],
-  "last_activity_at": "2026-07-15 08:48:39",
+  "last_activity_at": "2026-07-15 10:55:46",
   "last_report_date": "2026-07-14",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-14 11:00:02"
