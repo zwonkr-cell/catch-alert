@@ -2,14 +2,6 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "지마켓",
-      "at": "2026-07-14 18:54:25"
-    },
-    {
-      "company": "현대종합금속",
-      "at": "2026-07-14 18:54:28"
-    },
-    {
       "company": "삼일회계법인",
       "at": "2026-07-15 10:55:41"
     },
@@ -48,10 +40,14 @@
     {
       "company": "오픈서베이",
       "at": "2026-07-16 17:04:55"
+    },
+    {
+      "company": "안랩",
+      "at": "2026-07-16 19:54:00"
     }
   ],
-  "last_activity_at": "2026-07-16 17:04:56",
-  "last_report_date": "2026-07-15",
+  "last_activity_at": "2026-07-16 19:54:00",
+  "last_report_date": "2026-07-16",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-16 14:35:38"
 }
