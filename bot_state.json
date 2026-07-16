@@ -2,22 +2,6 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "한양디지텍",
-      "at": "2026-07-14 16:09:59"
-    },
-    {
-      "company": "BGF휴먼넷",
-      "at": "2026-07-14 16:10:01"
-    },
-    {
-      "company": "법무법인 세종",
-      "at": "2026-07-14 16:10:03"
-    },
-    {
-      "company": "에스디바이오센서",
-      "at": "2026-07-14 16:10:05"
-    },
-    {
       "company": "지마켓",
       "at": "2026-07-14 18:54:25"
     },
@@ -48,9 +32,25 @@
     {
       "company": "모아저축은행",
       "at": "2026-07-16 11:07:50"
+    },
+    {
+      "company": "이스틸포유",
+      "at": "2026-07-16 17:04:48"
+    },
+    {
+      "company": "이스틸포유",
+      "at": "2026-07-16 17:04:51"
+    },
+    {
+      "company": "코리안리재보험",
+      "at": "2026-07-16 17:04:53"
+    },
+    {
+      "company": "오픈서베이",
+      "at": "2026-07-16 17:04:55"
     }
   ],
-  "last_activity_at": "2026-07-16 11:07:51",
+  "last_activity_at": "2026-07-16 17:04:56",
   "last_report_date": "2026-07-15",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-16 14:35:38"
