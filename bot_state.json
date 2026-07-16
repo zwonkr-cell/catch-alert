@@ -72,9 +72,17 @@
     {
       "company": "SK케미칼",
       "at": "2026-07-15 16:11:52"
+    },
+    {
+      "company": "한영회계법인",
+      "at": "2026-07-16 11:07:47"
+    },
+    {
+      "company": "모아저축은행",
+      "at": "2026-07-16 11:07:50"
     }
   ],
-  "last_activity_at": "2026-07-16 07:54:46",
+  "last_activity_at": "2026-07-16 11:07:51",
   "last_report_date": "2026-07-15",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-14 11:00:02"
