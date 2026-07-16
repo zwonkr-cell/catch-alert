@@ -2,38 +2,6 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "종근당",
-      "at": "2026-07-14 13:57:59"
-    },
-    {
-      "company": "스태츠칩팩코리아",
-      "at": "2026-07-14 13:58:01"
-    },
-    {
-      "company": "에스피삼화",
-      "at": "2026-07-14 13:58:03"
-    },
-    {
-      "company": "한국캐피탈",
-      "at": "2026-07-14 13:58:06"
-    },
-    {
-      "company": "일화",
-      "at": "2026-07-14 13:58:08"
-    },
-    {
-      "company": "깨끗한나라",
-      "at": "2026-07-14 13:58:10"
-    },
-    {
-      "company": "SM엔터테인먼트",
-      "at": "2026-07-14 13:58:13"
-    },
-    {
-      "company": "SM엔터테인먼트",
-      "at": "2026-07-14 13:58:15"
-    },
-    {
       "company": "한양디지텍",
       "at": "2026-07-14 16:09:59"
     },
@@ -85,5 +53,5 @@
   "last_activity_at": "2026-07-16 11:07:51",
   "last_report_date": "2026-07-15",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
-  "last_error_at": "2026-07-14 11:00:02"
+  "last_error_at": "2026-07-16 14:35:38"
 }
