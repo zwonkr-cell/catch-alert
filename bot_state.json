@@ -2,28 +2,12 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "이스틸포유",
-      "at": "2026-07-16 17:04:48"
-    },
-    {
-      "company": "이스틸포유",
-      "at": "2026-07-16 17:04:51"
-    },
-    {
-      "company": "코리안리재보험",
-      "at": "2026-07-16 17:04:53"
-    },
-    {
-      "company": "오픈서베이",
-      "at": "2026-07-16 17:04:55"
-    },
-    {
       "company": "안랩",
       "at": "2026-07-16 19:54:00"
     }
   ],
   "last_activity_at": "2026-07-18 07:43:39",
   "last_report_date": "2026-07-17",
-  "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
-  "last_error_at": "2026-07-18 15:58:37"
+  "last_error_sig": "requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Read timed out. (read timeout=8)",
+  "last_error_at": "2026-07-18 17:50:44"
 }
