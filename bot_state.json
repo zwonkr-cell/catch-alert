@@ -6,8 +6,8 @@
       "at": "2026-07-16 19:54:00"
     }
   ],
-  "last_activity_at": "2026-07-18 07:43:39",
-  "last_report_date": "2026-07-17",
+  "last_activity_at": "2026-07-18 19:15:01",
+  "last_report_date": "2026-07-18",
   "last_error_sig": "requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Read timed out. (read timeout=8)",
   "last_error_at": "2026-07-18 17:50:44"
 }
