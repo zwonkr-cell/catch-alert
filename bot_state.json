@@ -1,11 +1,6 @@
 {
   "report_initialized": true,
-  "sent_log": [
-    {
-      "company": "안랩",
-      "at": "2026-07-16 19:54:00"
-    }
-  ],
+  "sent_log": [],
   "last_activity_at": "2026-07-18 19:15:01",
   "last_report_date": "2026-07-18",
   "last_error_sig": "requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Read timed out. (read timeout=8)",
