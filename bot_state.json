@@ -24,6 +24,6 @@
   ],
   "last_activity_at": "2026-07-18 07:43:39",
   "last_report_date": "2026-07-17",
-  "last_error_sig": "RuntimeError: 작동하는 한국 프록시를 찾지 못했습니다(캐치 접근 불가).",
-  "last_error_at": "2026-07-18 13:55:33"
+  "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
+  "last_error_at": "2026-07-18 15:58:37"
 }
