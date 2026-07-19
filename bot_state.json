@@ -3,6 +3,6 @@
   "sent_log": [],
   "last_activity_at": "2026-07-19 07:43:15",
   "last_report_date": "2026-07-18",
-  "last_error_sig": "requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Read timed out. (read timeout=8)",
-  "last_error_at": "2026-07-18 17:50:44"
+  "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
+  "last_error_at": "2026-07-19 17:08:51"
 }
