@@ -1,7 +1,7 @@
 {
   "report_initialized": true,
   "sent_log": [],
-  "last_activity_at": "2026-07-19 19:22:49",
+  "last_activity_at": "2026-07-20 07:46:52",
   "last_report_date": "2026-07-19",
   "last_error_sig": "requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Read timed out. (read timeout=8)",
   "last_error_at": "2026-07-20 02:56:13"
