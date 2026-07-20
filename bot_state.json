@@ -1,7 +1,24 @@
 {
   "report_initialized": true,
-  "sent_log": [],
-  "last_activity_at": "2026-07-20 07:46:52",
+  "sent_log": [
+    {
+      "company": "현대트랜시스",
+      "at": "2026-07-20 11:31:06"
+    },
+    {
+      "company": "행복나래",
+      "at": "2026-07-20 11:31:08"
+    },
+    {
+      "company": "신한투자증권",
+      "at": "2026-07-20 11:31:10"
+    },
+    {
+      "company": "신한투자증권",
+      "at": "2026-07-20 11:31:12"
+    }
+  ],
+  "last_activity_at": "2026-07-20 11:31:13",
   "last_report_date": "2026-07-19",
   "last_error_sig": "requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Read timed out. (read timeout=8)",
   "last_error_at": "2026-07-20 02:56:13"
