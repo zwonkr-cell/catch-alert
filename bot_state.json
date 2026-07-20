@@ -16,9 +16,21 @@
     {
       "company": "신한투자증권",
       "at": "2026-07-20 11:31:12"
+    },
+    {
+      "company": "다스",
+      "at": "2026-07-20 15:12:24"
+    },
+    {
+      "company": "나이스평가정보",
+      "at": "2026-07-20 15:12:26"
+    },
+    {
+      "company": "SK바이오사이언스",
+      "at": "2026-07-20 15:12:29"
     }
   ],
-  "last_activity_at": "2026-07-20 11:31:13",
+  "last_activity_at": "2026-07-20 15:12:29",
   "last_report_date": "2026-07-19",
   "last_error_sig": "requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Read timed out. (read timeout=8)",
   "last_error_at": "2026-07-20 02:56:13"
