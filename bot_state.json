@@ -60,10 +60,24 @@
     {
       "company": "만도브로제",
       "at": "2026-07-21 11:10:09"
+    },
+    {
+      "company": "하이네켄코리아",
+      "at": "2026-07-21 16:05:14"
+    },
+    {
+      "company": "에프지코리아",
+      "at": "2026-07-21 16:05:17"
+    },
+    {
+      "company": "한국일보사",
+      "at": "2026-07-21 16:05:19"
     }
   ],
-  "last_activity_at": "2026-07-21 11:10:09",
+  "last_activity_at": "2026-07-21 16:05:20",
   "last_report_date": "2026-07-20",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
-  "last_error_at": "2026-07-20 21:13:33"
+  "last_error_at": "2026-07-20 21:13:33",
+  "consec_err": {},
+  "transport": "proxy:1.231.81.166:3128"
 }
