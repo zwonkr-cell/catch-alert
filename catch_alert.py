@@ -266,21 +266,78 @@ def _plain_send_all(cfg, text):
     return ok
 
 
+# ── 오류 분류: (키, 이모지, 심각도, 알림까지 필요한 연속횟수, 키워드, 제목, 원인, 조치) ──
+ERROR_CATEGORIES = [
+    ("structure", "🔴", "높음 · 조치 필요", 1,
+     ["구조 변경", "파싱 0건", "attributeerror", "keyerror", "indexerror", "nonetype",
+      "jsondecodeerror"],
+     "사이트 구조/응답 변경 의심 — 공고를 읽지 못했어요",
+     "캐치가 API 나 페이지를 개편하면 봇이 공고를 찾지 못하게 돼요.",
+     "네, 코드 수정이 필요해요. 이 알림 내용을 개발 세션(클로드)에 전달해 주세요. 수정 전까지 새 공고 알림이 중단돼요."),
+    ("proxy", "🟡", "낮음 · 조치 불필요", 2,
+     ["프록시를 찾지 못했습니다", "프록시"],
+     "한국 프록시를 일시적으로 찾지 못했어요",
+     "캐치는 해외 서버를 차단해서 무료 한국 프록시로 우회하는데, 무료 프록시가 일시적으로 모두 죽어있을 때가 있어요.",
+     "아니요. 다음 실행에서 새 프록시를 자동으로 찾고, 놓친 공고도 그대로 알림돼요. 다만 이 알림이 여러 날 반복되면 개발 세션에 전달해 주세요."),
+    ("blocked", "🟠", "중간 · 지켜보기", 1,
+     ["403", "forbidden", "captcha", "차단"],
+     "사이트가 접근을 차단했을 가능성",
+     "사이트가 자동 수집을 일시적으로 막았을 수 있어요.",
+     "당장 조치는 필요 없어요. 이 알림이 하루 이상 반복되면 개발 세션에 전달해 주세요."),
+    ("network", "🟡", "낮음 · 조치 불필요", 2,
+     ["접속 5회 모두 실패", "connection", "timeout", "timed out", "10054", "reset",
+      "aborted", "urlerror", "수집 실패"],
+     "일시적 접속 장애",
+     "서버 혼잡이나 순간적인 네트워크 문제로 가끔 발생해요.",
+     "아니요. 다음 실행에서 자동 복구되고, 놓친 공고도 그대로 알림돼요."),
+    ("state", "🟠", "중간 · 지켜보기", 1,
+     ["oserror", "permissionerror", "json.decoder", "상태 저장"],
+     "기록 파일 저장/읽기 문제",
+     "공고 기록 파일을 읽거나 쓰는 데 문제가 생겼어요.",
+     "일시적일 수 있어요. 반복되면 개발 세션에 전달해 주세요."),
+]
+
+
+def classify_error(raw_text):
+    low = (raw_text or "").lower()
+    for key, emoji, sev, min_consec, kws, title, why, action in ERROR_CATEGORIES:
+        if any(k in low for k in kws):
+            return {"key": key, "emoji": emoji, "sev": sev, "min_consec": min_consec,
+                    "title": title, "why": why, "action": action}
+    return {"key": "unknown", "emoji": "🔴", "sev": "높음 · 조치 필요", "min_consec": 1,
+            "title": "알 수 없는 오류",
+            "why": "예상하지 못한 문제가 발생했어요.",
+            "action": "네, 확인이 필요해요. 이 알림 내용을 개발 세션(클로드)에 전달해 주세요."}
+
+
 def notify_error(cfg, state, raw_text):
-    """오류 원문을 텔레그램으로 노티. 같은 오류는 ERROR_DEDUP_HOURS 에 한 번만."""
+    """오류를 분류해 쉬운 설명으로 노티. 일시적 오류는 연속 2회부터, 같은 유형은 12h 1회."""
     raw_text = (raw_text or "").strip() or "알 수 없는 오류"
-    sig = raw_text.splitlines()[-1][:120]     # 마지막 줄(예외 타입/메시지)을 서명으로
-    now = datetime.now(KST)
-    last_at = _parse_iso(state.get("last_error_at"))
-    if state.get("last_error_sig") == sig and last_at and \
-            (now - last_at) < timedelta(hours=ERROR_DEDUP_HOURS):
-        log.info("동일 오류 최근 노티됨 → 텔레그램 생략(스팸 방지)")
+    summary = raw_text.splitlines()[-1][:100]
+    info = classify_error(raw_text)
+    consec = state.setdefault("consec_err", {})
+    cnt = consec.get(info["key"], 0) + 1
+    consec[info["key"]] = cnt
+    if cnt < info["min_consec"]:
+        log.info("[%s] 1회성 오류 → 알림 보류(연속 %d회부터 알림)", info["key"], info["min_consec"])
         return
-    msg = ("⚠️ [캐치봇] 오류가 발생했어요 (원문):\n\n" + raw_text +
-           f"\n\n(발생 시각: {_now_iso()})")
+    last_at = _parse_iso(state.get("err_notified_at", {}).get(info["key"]))
+    if last_at and (datetime.now(KST) - last_at) < timedelta(hours=ERROR_DEDUP_HOURS):
+        log.info("[%s] 같은 유형 최근 알림됨 → 생략(스팸 방지)", info["key"])
+        return
+    consec_note = f" (연속 {cnt}회째)" if cnt >= 2 else ""
+    msg = (f"{info['emoji']} [캐치봇] 오류 알림 — 심각도: {info['sev']}\n"
+           f"\n"
+           f"■ 무슨 오류인가요?\n{info['title']}{consec_note}\n"
+           f"\n"
+           f"■ 왜 발생하나요?\n{info['why']}\n"
+           f"\n"
+           f"■ 조치가 필요한가요?\n{info['action']}\n"
+           f"\n"
+           f"(참고: {summary})\n"
+           f"(발생 시각: {_now_iso()})")
     _plain_send_all(cfg, msg)
-    state["last_error_sig"] = sig
-    state["last_error_at"] = _now_iso()
+    state.setdefault("err_notified_at", {})[info["key"]] = _now_iso()
 
 
 def note_activity(state):
@@ -716,6 +773,8 @@ def run(cfg, state, dry_run=False):
         raise
 
     log.info("수집 완료: %d건 (총 %d건 보고됨)", len(items), total)
+
+    state["consec_err"] = {}   # 수집 성공 → 연속 오류 카운터 리셋
 
     valid = [it for it in items if it.get("RecruitID") is not None]
     current_ids = {item_id(it) for it in valid}
