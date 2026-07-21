@@ -56,9 +56,13 @@
     {
       "company": "네이버클라우드",
       "at": "2026-07-20 18:56:50"
+    },
+    {
+      "company": "만도브로제",
+      "at": "2026-07-21 11:10:09"
     }
   ],
-  "last_activity_at": "2026-07-21 07:54:58",
+  "last_activity_at": "2026-07-21 11:10:09",
   "last_report_date": "2026-07-20",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33"
