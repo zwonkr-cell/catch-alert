@@ -326,6 +326,11 @@ def notify_error(cfg, state, raw_text):
         log.info("[%s] 같은 유형 최근 알림됨 → 생략(스팸 방지)", info["key"])
         return
     consec_note = f" (연속 {cnt}회째)" if cnt >= 2 else ""
+    # 새로운(미분류) 유형은 판단 근거가 없으므로 오류 원문을 함께 첨부
+    if info["key"] == "unknown":
+        tail = f"■ 오류 원문 (처음 보는 유형이라 원문을 함께 보내요)\n{raw_text[:1500]}\n"
+    else:
+        tail = f"(참고: {summary})\n"
     msg = (f"{info['emoji']} [캐치봇] 오류 알림 — 심각도: {info['sev']}\n"
            f"\n"
            f"■ 무슨 오류인가요?\n{info['title']}{consec_note}\n"
@@ -334,7 +339,7 @@ def notify_error(cfg, state, raw_text):
            f"\n"
            f"■ 조치가 필요한가요?\n{info['action']}\n"
            f"\n"
-           f"(참고: {summary})\n"
+           f"{tail}"
            f"(발생 시각: {_now_iso()})")
     _plain_send_all(cfg, msg)
     state.setdefault("err_notified_at", {})[info["key"]] = _now_iso()
@@ -469,14 +474,19 @@ def get_kr_proxy_candidates():
     return list(dict.fromkeys(cands))  # 순서 유지 dedupe
 
 
+LAST_TRANSPORT = "direct"   # 이번 실행의 연결 방식 ("direct" | "proxy:IP")
+
+
 def resolve_transport(cfg):
     """반환: proxies dict(프록시 사용) 또는 None(직접 연결). 둘 다 불가하면 예외."""
+    global LAST_TRANSPORT
     test_url = _small_test_url(cfg)
     # 1) 직접 연결 (로컬 한국 IP 는 이걸로 끝)
     try:
         r = requests.get(test_url, headers=REQ_HEADERS, timeout=cfg["request_timeout"])
         if r.status_code == 200 and "recruitData" in r.text:
             log.info("직접 연결 성공 (프록시 불필요)")
+            LAST_TRANSPORT = "direct"
             return None
         log.warning("직접 연결 status=%s → 한국 프록시 탐색", r.status_code)
     except Exception as e:
@@ -490,10 +500,32 @@ def resolve_transport(cfg):
             r = requests.get(test_url, headers=REQ_HEADERS, proxies=prox, timeout=PROXY_TIMEOUT)
             if r.status_code == 200 and "recruitData" in r.text:
                 log.info("프록시 사용: %s", p)
+                LAST_TRANSPORT = f"proxy:{p}"
                 return prox
         except Exception:
             continue
     raise RuntimeError("작동하는 한국 프록시를 찾지 못했습니다(캐치 접근 불가).")
+
+
+def handle_transport(cfg, state):
+    """
+    연결 방식 변화를 감지해 노티.
+    캐치는 GitHub(해외 IP)에서 프록시 우회가 '정상 상태'이므로,
+    최초 실행은 조용히 기록만 하고 이후 '변화'가 있을 때만 알립니다.
+    """
+    cur = LAST_TRANSPORT
+    prev = state.get("transport")
+    if prev is None:
+        state["transport"] = cur
+        return
+    cur_p = cur.startswith("proxy")
+    prev_p = str(prev).startswith("proxy")
+    if cur_p and not prev_p:
+        _plain_send_all(cfg, "🛡 [캐치봇] 직접 연결이 차단되어 한국 프록시로 즉시 우회했어요.\n"
+                             "수집·알림은 정상 작동 중이고, 조치는 필요 없어요.")
+    elif (not cur_p) and prev_p:
+        _plain_send_all(cfg, "✅ [캐치봇] 직접 연결이 복구되어 프록시 우회를 종료했어요.")
+    state["transport"] = cur
 
 
 def http_get_json(url, timeout, proxies=None, tries=3):
@@ -775,6 +807,8 @@ def run(cfg, state, dry_run=False):
     log.info("수집 완료: %d건 (총 %d건 보고됨)", len(items), total)
 
     state["consec_err"] = {}   # 수집 성공 → 연속 오류 카운터 리셋
+    if not dry_run:
+        handle_transport(cfg, state)   # 연결 방식(직접↔프록시) 변화 노티
 
     valid = [it for it in items if it.get("RecruitID") is not None]
     current_ids = {item_id(it) for it in valid}
