@@ -2,22 +2,6 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "현대트랜시스",
-      "at": "2026-07-20 11:31:06"
-    },
-    {
-      "company": "행복나래",
-      "at": "2026-07-20 11:31:08"
-    },
-    {
-      "company": "신한투자증권",
-      "at": "2026-07-20 11:31:10"
-    },
-    {
-      "company": "신한투자증권",
-      "at": "2026-07-20 11:31:12"
-    },
-    {
       "company": "다스",
       "at": "2026-07-20 15:12:24"
     },
@@ -84,9 +68,17 @@
     {
       "company": "동화기업",
       "at": "2026-07-22 11:04:42"
+    },
+    {
+      "company": "메디톡스",
+      "at": "2026-07-22 14:33:35"
+    },
+    {
+      "company": "이트너스",
+      "at": "2026-07-22 14:33:37"
     }
   ],
-  "last_activity_at": "2026-07-22 11:04:43",
+  "last_activity_at": "2026-07-22 14:33:38",
   "last_report_date": "2026-07-21",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
