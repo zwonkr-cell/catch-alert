@@ -2,18 +2,6 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "다스",
-      "at": "2026-07-20 15:12:24"
-    },
-    {
-      "company": "나이스평가정보",
-      "at": "2026-07-20 15:12:26"
-    },
-    {
-      "company": "SK바이오사이언스",
-      "at": "2026-07-20 15:12:29"
-    },
-    {
       "company": "에프앤코",
       "at": "2026-07-20 18:56:35"
     },
@@ -76,9 +64,29 @@
     {
       "company": "이트너스",
       "at": "2026-07-22 14:33:37"
+    },
+    {
+      "company": "한영회계법인",
+      "at": "2026-07-22 17:16:40"
+    },
+    {
+      "company": "한영회계법인",
+      "at": "2026-07-22 17:16:43"
+    },
+    {
+      "company": "한영회계법인",
+      "at": "2026-07-22 17:16:45"
+    },
+    {
+      "company": "린데코리아",
+      "at": "2026-07-22 17:16:47"
+    },
+    {
+      "company": "에프지코리아",
+      "at": "2026-07-22 17:16:49"
     }
   ],
-  "last_activity_at": "2026-07-22 14:33:38",
+  "last_activity_at": "2026-07-22 17:16:50",
   "last_report_date": "2026-07-21",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
