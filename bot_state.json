@@ -2,34 +2,6 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "에프앤코",
-      "at": "2026-07-20 18:56:35"
-    },
-    {
-      "company": "LG경영개발원",
-      "at": "2026-07-20 18:56:38"
-    },
-    {
-      "company": "에프지코리아",
-      "at": "2026-07-20 18:56:40"
-    },
-    {
-      "company": "한국베링거인겔하임",
-      "at": "2026-07-20 18:56:43"
-    },
-    {
-      "company": "에프지코리아",
-      "at": "2026-07-20 18:56:45"
-    },
-    {
-      "company": "에이피알",
-      "at": "2026-07-20 18:56:47"
-    },
-    {
-      "company": "네이버클라우드",
-      "at": "2026-07-20 18:56:50"
-    },
-    {
       "company": "만도브로제",
       "at": "2026-07-21 11:10:09"
     },
@@ -84,10 +56,14 @@
     {
       "company": "에프지코리아",
       "at": "2026-07-22 17:16:49"
+    },
+    {
+      "company": "에코마케팅",
+      "at": "2026-07-22 19:38:44"
     }
   ],
-  "last_activity_at": "2026-07-22 17:16:50",
-  "last_report_date": "2026-07-21",
+  "last_activity_at": "2026-07-22 19:38:44",
+  "last_report_date": "2026-07-22",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
   "consec_err": {},
