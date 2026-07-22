@@ -254,6 +254,19 @@ def _parse_iso(s):
         return None
 
 
+SHEET_WEBHOOK_URL = os.environ.get("SHEET_WEBHOOK_URL", "").strip()
+
+
+def log_to_sheet(payload):
+    """새 공고 1건을 구글 시트(Apps Script 웹앱)에 기록. 실패해도 봇 동작엔 영향 없음."""
+    if not SHEET_WEBHOOK_URL:
+        return
+    try:
+        requests.post(SHEET_WEBHOOK_URL, json=payload, timeout=10)
+    except Exception as e:
+        log.warning("구글시트 기록 실패: %s", e)
+
+
 def _plain_send_all(cfg, text):
     """모든 수신자에게 일반텍스트로 전송(오류/하트비트 노티용). 성공 수 반환."""
     ok = 0
@@ -865,6 +878,19 @@ def run(cfg, state, dry_run=False):
         if notify_recipients(cfg["bot_token"], cfg["chat_ids"], text, cfg):
             newly_done.add(rid)
             record_sent(state, it.get("CompName"))   # 일일 리포트용 기록
+            _extra = ", ".join(str(it.get(k)) for k in
+                               ("WorkArea", "Depth", "PopularCategory",
+                                "CareerGubunCode", "GubunCode", "RecruitCategory")
+                               if it.get(k))
+            log_to_sheet({
+                "bot": "캐치",
+                "scraped_at": scraped_ts,
+                "company": it.get("CompName") or "",
+                "title": it.get("RecruitTitle") or "",
+                "link": DETAIL_URL_FMT.format(rid=rid),
+                "deadline": format_deadline(it, cfg["weekday_full"]) or (it.get("ApplyEndCode") or ""),
+                "extra": _extra,
+            })
             log.info("전송 완료 RecruitID=%s (%s)", rid, it.get("CompName"))
         else:
             log.warning("전송 실패(일시적) RecruitID=%s → 다음 실행 때 재시도", rid)

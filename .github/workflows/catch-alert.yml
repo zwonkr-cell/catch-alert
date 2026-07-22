@@ -50,6 +50,7 @@ jobs:
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_IDS: ${{ secrets.CHAT_IDS }}
+          SHEET_WEBHOOK_URL: ${{ secrets.SHEET_WEBHOOK_URL }}
           # api_url 은 config.json 에 있어 별도 시크릿이 필요 없습니다(민감정보 아님).
           # API_URL: ${{ secrets.API_URL }}
         run: |
