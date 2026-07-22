@@ -879,13 +879,14 @@ def run(cfg, state, dry_run=False):
             newly_done.add(rid)
             record_sent(state, it.get("CompName"))   # 일일 리포트용 기록
             _extra = ", ".join(str(it.get(k)) for k in
-                               ("WorkArea", "Depth", "PopularCategory",
+                               ("Depth", "PopularCategory",
                                 "CareerGubunCode", "GubunCode", "RecruitCategory")
                                if it.get(k))
             log_to_sheet({
                 "bot": "캐치",
                 "scraped_at": scraped_ts,
                 "company": it.get("CompName") or "",
+                "region": it.get("WorkArea") or "",
                 "title": it.get("RecruitTitle") or "",
                 "link": DETAIL_URL_FMT.format(rid=rid),
                 "deadline": format_deadline(it, cfg["weekday_full"]) or (it.get("ApplyEndCode") or ""),
