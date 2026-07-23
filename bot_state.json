@@ -2,10 +2,6 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "대덕전자",
-      "at": "2026-07-21 19:01:39"
-    },
-    {
       "company": "하나캐피탈",
       "at": "2026-07-22 11:04:40"
     },
@@ -84,12 +80,20 @@
     {
       "company": "KG모빌리티",
       "at": "2026-07-23 17:21:39"
+    },
+    {
+      "company": "다인정공",
+      "at": "2026-07-23 19:39:05"
+    },
+    {
+      "company": "에이피알",
+      "at": "2026-07-23 19:39:10"
     }
   ],
-  "last_activity_at": "2026-07-23 17:21:41",
-  "last_report_date": "2026-07-22",
+  "last_activity_at": "2026-07-23 19:39:13",
+  "last_report_date": "2026-07-23",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
   "consec_err": {},
-  "transport": "proxy:106.10.55.212:1121"
+  "transport": "proxy:1.231.81.166:3128"
 }
