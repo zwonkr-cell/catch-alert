@@ -882,6 +882,12 @@ def run(cfg, state, dry_run=False):
                                ("Depth", "PopularCategory",
                                 "CareerGubunCode", "GubunCode", "RecruitCategory")
                                if it.get(k))
+            # 수시채용(채용시/수시/상시)은 마감일자 텍스트로 보내 시트에서 '공고일+15일' 유효처리되게 함.
+            _apply_code = str(it.get("ApplyEndCode") or "")
+            if any(k in _apply_code for k in ("채용시", "수시", "상시")):
+                _deadline = _apply_code
+            else:
+                _deadline = format_deadline(it, cfg["weekday_full"]) or _apply_code
             log_to_sheet({
                 "bot": "catch",
                 "scraped_at": scraped_ts,
@@ -889,7 +895,7 @@ def run(cfg, state, dry_run=False):
                 "region": it.get("WorkArea") or "",
                 "title": it.get("RecruitTitle") or "",
                 "link": DETAIL_URL_FMT.format(rid=rid),
-                "deadline": format_deadline(it, cfg["weekday_full"]) or (it.get("ApplyEndCode") or ""),
+                "deadline": _deadline,
                 "extra": _extra,
             })
             log.info("전송 완료 RecruitID=%s (%s)", rid, it.get("CompName"))
