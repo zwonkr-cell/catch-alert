@@ -883,7 +883,7 @@ def run(cfg, state, dry_run=False):
                                 "CareerGubunCode", "GubunCode", "RecruitCategory")
                                if it.get(k))
             log_to_sheet({
-                "bot": "캐치",
+                "bot": "catch",
                 "scraped_at": scraped_ts,
                 "company": it.get("CompName") or "",
                 "region": it.get("WorkArea") or "",
