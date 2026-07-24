@@ -88,9 +88,13 @@
     {
       "company": "GC",
       "at": "2026-07-24 14:34:56"
+    },
+    {
+      "company": "신한펀드파트너스",
+      "at": "2026-07-24 17:16:18"
     }
   ],
-  "last_activity_at": "2026-07-24 14:34:59",
+  "last_activity_at": "2026-07-24 17:16:21",
   "last_report_date": "2026-07-23",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
