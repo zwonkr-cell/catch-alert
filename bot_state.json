@@ -2,14 +2,6 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "하나캐피탈",
-      "at": "2026-07-22 11:04:40"
-    },
-    {
-      "company": "동화기업",
-      "at": "2026-07-22 11:04:42"
-    },
-    {
       "company": "메디톡스",
       "at": "2026-07-22 14:33:35"
     },
@@ -88,9 +80,17 @@
     {
       "company": "에이피알",
       "at": "2026-07-23 19:39:10"
+    },
+    {
+      "company": "인크로스",
+      "at": "2026-07-24 11:08:14"
+    },
+    {
+      "company": "에이피알",
+      "at": "2026-07-24 11:08:19"
     }
   ],
-  "last_activity_at": "2026-07-24 07:43:45",
+  "last_activity_at": "2026-07-24 11:08:22",
   "last_report_date": "2026-07-23",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
