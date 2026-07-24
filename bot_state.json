@@ -2,14 +2,6 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "메디톡스",
-      "at": "2026-07-22 14:33:35"
-    },
-    {
-      "company": "이트너스",
-      "at": "2026-07-22 14:33:37"
-    },
-    {
       "company": "한영회계법인",
       "at": "2026-07-22 17:16:40"
     },
@@ -88,9 +80,17 @@
     {
       "company": "에이피알",
       "at": "2026-07-24 11:08:19"
+    },
+    {
+      "company": "조선비즈",
+      "at": "2026-07-24 14:34:50"
+    },
+    {
+      "company": "GC",
+      "at": "2026-07-24 14:34:56"
     }
   ],
-  "last_activity_at": "2026-07-24 11:08:22",
+  "last_activity_at": "2026-07-24 14:34:59",
   "last_report_date": "2026-07-23",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
