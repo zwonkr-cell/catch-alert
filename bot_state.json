@@ -2,18 +2,6 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "DN솔루션즈",
-      "at": "2026-07-23 11:12:30"
-    },
-    {
-      "company": "KB자산운용",
-      "at": "2026-07-23 11:12:39"
-    },
-    {
-      "company": "현대엘리베이터",
-      "at": "2026-07-23 11:12:43"
-    },
-    {
       "company": "한영회계법인",
       "at": "2026-07-23 14:39:04"
     },
@@ -79,5 +67,5 @@
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
   "consec_err": {},
-  "transport": "proxy:47.80.26.236:8080"
+  "transport": "proxy:1.231.81.166:3128"
 }
