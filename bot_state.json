@@ -1,11 +1,6 @@
 {
   "report_initialized": true,
-  "sent_log": [
-    {
-      "company": "오픈서베이",
-      "at": "2026-07-24 19:32:31"
-    }
-  ],
+  "sent_log": [],
   "last_activity_at": "2026-07-26 19:16:45",
   "last_report_date": "2026-07-26",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
