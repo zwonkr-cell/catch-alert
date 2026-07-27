@@ -16,10 +16,18 @@
     {
       "company": "블랭크코퍼레이션",
       "at": "2026-07-27 15:05:03"
+    },
+    {
+      "company": "볼보그룹코리아",
+      "at": "2026-07-27 19:15:27"
+    },
+    {
+      "company": "KB자산운용",
+      "at": "2026-07-27 19:15:33"
     }
   ],
-  "last_activity_at": "2026-07-27 15:05:07",
-  "last_report_date": "2026-07-26",
+  "last_activity_at": "2026-07-27 19:15:36",
+  "last_report_date": "2026-07-27",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
   "consec_err": {},
