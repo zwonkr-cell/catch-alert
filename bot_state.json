@@ -1,7 +1,24 @@
 {
   "report_initialized": true,
-  "sent_log": [],
-  "last_activity_at": "2026-07-27 07:46:18",
+  "sent_log": [
+    {
+      "company": "한영회계법인",
+      "at": "2026-07-27 15:04:49"
+    },
+    {
+      "company": "종근당바이오",
+      "at": "2026-07-27 15:04:54"
+    },
+    {
+      "company": "롯데홈쇼핑",
+      "at": "2026-07-27 15:04:59"
+    },
+    {
+      "company": "블랭크코퍼레이션",
+      "at": "2026-07-27 15:05:03"
+    }
+  ],
+  "last_activity_at": "2026-07-27 15:05:07",
   "last_report_date": "2026-07-26",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
