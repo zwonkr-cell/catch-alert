@@ -52,10 +52,14 @@
     {
       "company": "아이에스시",
       "at": "2026-07-28 14:22:45"
+    },
+    {
+      "company": "메가박스중앙",
+      "at": "2026-07-28 19:40:37"
     }
   ],
-  "last_activity_at": "2026-07-28 14:22:48",
-  "last_report_date": "2026-07-27",
+  "last_activity_at": "2026-07-28 19:40:41",
+  "last_report_date": "2026-07-28",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
   "consec_err": {},
