@@ -2,22 +2,6 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "한영회계법인",
-      "at": "2026-07-27 15:04:49"
-    },
-    {
-      "company": "종근당바이오",
-      "at": "2026-07-27 15:04:54"
-    },
-    {
-      "company": "롯데홈쇼핑",
-      "at": "2026-07-27 15:04:59"
-    },
-    {
-      "company": "블랭크코퍼레이션",
-      "at": "2026-07-27 15:05:03"
-    },
-    {
       "company": "볼보그룹코리아",
       "at": "2026-07-27 19:15:27"
     },
@@ -82,6 +66,8 @@
   "last_report_date": "2026-07-28",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
-  "consec_err": {},
+  "consec_err": {
+    "proxy": 1
+  },
   "transport": "proxy:1.231.81.166:3128"
 }
