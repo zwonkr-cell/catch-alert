@@ -2,14 +2,6 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "볼보그룹코리아",
-      "at": "2026-07-27 19:15:27"
-    },
-    {
-      "company": "KB자산운용",
-      "at": "2026-07-27 19:15:33"
-    },
-    {
       "company": "코스메카코리아",
       "at": "2026-07-28 11:01:17"
     },
@@ -60,14 +52,28 @@
     {
       "company": "딜로이트컨설팅",
       "at": "2026-07-29 14:37:56"
+    },
+    {
+      "company": "샌드박스네트워크",
+      "at": "2026-07-29 20:04:19"
+    },
+    {
+      "company": "SK텔링크",
+      "at": "2026-07-29 20:04:24"
+    },
+    {
+      "company": "동국제약",
+      "at": "2026-07-29 20:04:29"
+    },
+    {
+      "company": "디어포스",
+      "at": "2026-07-29 20:04:33"
     }
   ],
-  "last_activity_at": "2026-07-29 14:37:58",
-  "last_report_date": "2026-07-28",
+  "last_activity_at": "2026-07-29 20:04:36",
+  "last_report_date": "2026-07-29",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
-  "consec_err": {
-    "proxy": 1
-  },
+  "consec_err": {},
   "transport": "proxy:1.231.81.166:3128"
 }
