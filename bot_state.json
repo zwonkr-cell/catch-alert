@@ -56,14 +56,32 @@
     {
       "company": "메가박스중앙",
       "at": "2026-07-28 19:40:37"
+    },
+    {
+      "company": "에이아이에이생명보험",
+      "at": "2026-07-29 14:37:36"
+    },
+    {
+      "company": "딜로이트컨설팅",
+      "at": "2026-07-29 14:37:41"
+    },
+    {
+      "company": "딜로이트컨설팅",
+      "at": "2026-07-29 14:37:46"
+    },
+    {
+      "company": "SM엔터테인먼트",
+      "at": "2026-07-29 14:37:50"
+    },
+    {
+      "company": "딜로이트컨설팅",
+      "at": "2026-07-29 14:37:56"
     }
   ],
-  "last_activity_at": "2026-07-29 07:48:44",
+  "last_activity_at": "2026-07-29 14:37:58",
   "last_report_date": "2026-07-28",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
-  "consec_err": {
-    "network": 1
-  },
+  "consec_err": {},
   "transport": "proxy:1.231.81.166:3128"
 }
