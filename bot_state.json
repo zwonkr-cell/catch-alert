@@ -2,26 +2,6 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "코스메카코리아",
-      "at": "2026-07-28 11:01:17"
-    },
-    {
-      "company": "이노션",
-      "at": "2026-07-28 11:01:22"
-    },
-    {
-      "company": "피에스케이",
-      "at": "2026-07-28 11:01:26"
-    },
-    {
-      "company": "피에스케이홀딩스",
-      "at": "2026-07-28 11:01:31"
-    },
-    {
-      "company": "현대종합금속",
-      "at": "2026-07-28 11:01:36"
-    },
-    {
       "company": "데이원컴퍼니",
       "at": "2026-07-28 14:22:41"
     },
@@ -84,9 +64,17 @@
     {
       "company": "법무법인 세종",
       "at": "2026-07-30 10:54:25"
+    },
+    {
+      "company": "제뉴원사이언스",
+      "at": "2026-07-30 13:55:18"
+    },
+    {
+      "company": "아이피엑스",
+      "at": "2026-07-30 13:55:23"
     }
   ],
-  "last_activity_at": "2026-07-30 10:54:28",
+  "last_activity_at": "2026-07-30 13:55:26",
   "last_report_date": "2026-07-29",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
