@@ -2,26 +2,6 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "에이아이에이생명보험",
-      "at": "2026-07-29 14:37:36"
-    },
-    {
-      "company": "딜로이트컨설팅",
-      "at": "2026-07-29 14:37:41"
-    },
-    {
-      "company": "딜로이트컨설팅",
-      "at": "2026-07-29 14:37:46"
-    },
-    {
-      "company": "SM엔터테인먼트",
-      "at": "2026-07-29 14:37:50"
-    },
-    {
-      "company": "딜로이트컨설팅",
-      "at": "2026-07-29 14:37:56"
-    },
-    {
       "company": "샌드박스네트워크",
       "at": "2026-07-29 20:04:19"
     },
@@ -60,9 +40,21 @@
     {
       "company": "아이피엑스",
       "at": "2026-07-30 13:55:23"
+    },
+    {
+      "company": "메가스터디교육",
+      "at": "2026-07-31 14:50:31"
+    },
+    {
+      "company": "메가스터디교육",
+      "at": "2026-07-31 14:50:35"
+    },
+    {
+      "company": "에코마케팅",
+      "at": "2026-07-31 14:50:39"
     }
   ],
-  "last_activity_at": "2026-07-31 07:56:12",
+  "last_activity_at": "2026-07-31 14:50:42",
   "last_report_date": "2026-07-30",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
