@@ -2,22 +2,6 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "샌드박스네트워크",
-      "at": "2026-07-29 20:04:19"
-    },
-    {
-      "company": "SK텔링크",
-      "at": "2026-07-29 20:04:24"
-    },
-    {
-      "company": "동국제약",
-      "at": "2026-07-29 20:04:29"
-    },
-    {
-      "company": "디어포스",
-      "at": "2026-07-29 20:04:33"
-    },
-    {
       "company": "에스피지",
       "at": "2026-07-30 10:54:13"
     },
@@ -68,10 +52,14 @@
     {
       "company": "SK바이오팜",
       "at": "2026-07-31 17:42:27"
+    },
+    {
+      "company": "한국능률협회컨설팅",
+      "at": "2026-07-31 20:27:51"
     }
   ],
-  "last_activity_at": "2026-07-31 17:42:29",
-  "last_report_date": "2026-07-30",
+  "last_activity_at": "2026-07-31 20:27:54",
+  "last_report_date": "2026-07-31",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
   "consec_err": {},
