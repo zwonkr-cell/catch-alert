@@ -34,8 +34,8 @@
       "at": "2026-07-31 20:27:51"
     }
   ],
-  "last_activity_at": "2026-08-01 08:49:38",
-  "last_report_date": "2026-07-31",
+  "last_activity_at": "2026-08-01 19:14:44",
+  "last_report_date": "2026-08-01",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
   "consec_err": {},
