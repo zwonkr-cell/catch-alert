@@ -2,30 +2,14 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "이노션",
-      "at": "2026-07-31 17:42:15"
-    },
-    {
-      "company": "SK케미칼",
-      "at": "2026-07-31 17:42:19"
-    },
-    {
-      "company": "SK플라즈마",
-      "at": "2026-07-31 17:42:23"
-    },
-    {
-      "company": "SK바이오팜",
-      "at": "2026-07-31 17:42:27"
-    },
-    {
       "company": "한국능률협회컨설팅",
       "at": "2026-07-31 20:27:51"
     }
   ],
-  "last_activity_at": "2026-08-02 07:43:03",
-  "last_report_date": "2026-08-01",
+  "last_activity_at": "2026-08-02 19:13:12",
+  "last_report_date": "2026-08-02",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
   "consec_err": {},
-  "transport": "proxy:14.34.180.21:38157"
+  "transport": "proxy:1.231.81.166:3128"
 }
