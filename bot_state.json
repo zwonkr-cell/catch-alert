@@ -1,7 +1,12 @@
 {
   "report_initialized": true,
-  "sent_log": [],
-  "last_activity_at": "2026-08-02 19:13:12",
+  "sent_log": [
+    {
+      "company": "한국투자저축은행",
+      "at": "2026-08-03 01:51:26"
+    }
+  ],
+  "last_activity_at": "2026-08-03 01:51:28",
   "last_report_date": "2026-08-02",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
