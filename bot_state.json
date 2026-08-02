@@ -2,18 +2,6 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "메가스터디교육",
-      "at": "2026-07-31 14:50:31"
-    },
-    {
-      "company": "메가스터디교육",
-      "at": "2026-07-31 14:50:35"
-    },
-    {
-      "company": "에코마케팅",
-      "at": "2026-07-31 14:50:39"
-    },
-    {
       "company": "이노션",
       "at": "2026-07-31 17:42:15"
     },
@@ -39,5 +27,5 @@
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
   "consec_err": {},
-  "transport": "proxy:43.164.129.36:3128"
+  "transport": "proxy:14.34.180.21:38157"
 }
