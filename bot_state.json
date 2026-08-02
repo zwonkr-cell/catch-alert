@@ -1,11 +1,6 @@
 {
   "report_initialized": true,
-  "sent_log": [
-    {
-      "company": "한국능률협회컨설팅",
-      "at": "2026-07-31 20:27:51"
-    }
-  ],
+  "sent_log": [],
   "last_activity_at": "2026-08-02 19:13:12",
   "last_report_date": "2026-08-02",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
