@@ -60,10 +60,26 @@
     {
       "company": "유진자산운용",
       "at": "2026-08-04 17:01:19"
+    },
+    {
+      "company": "네이버클라우드",
+      "at": "2026-08-04 19:45:06"
+    },
+    {
+      "company": "네이버클라우드",
+      "at": "2026-08-04 19:45:12"
+    },
+    {
+      "company": "한세실업",
+      "at": "2026-08-04 19:45:19"
+    },
+    {
+      "company": "한영회계법인",
+      "at": "2026-08-04 19:45:24"
     }
   ],
-  "last_activity_at": "2026-08-04 17:01:23",
-  "last_report_date": "2026-08-03",
+  "last_activity_at": "2026-08-04 19:45:27",
+  "last_report_date": "2026-08-04",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
   "consec_err": {},
