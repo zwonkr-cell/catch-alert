@@ -48,9 +48,21 @@
     {
       "company": "이연제약",
       "at": "2026-08-04 14:17:29"
+    },
+    {
+      "company": "연합인포맥스",
+      "at": "2026-08-04 17:01:00"
+    },
+    {
+      "company": "안다르",
+      "at": "2026-08-04 17:01:05"
+    },
+    {
+      "company": "유진자산운용",
+      "at": "2026-08-04 17:01:19"
     }
   ],
-  "last_activity_at": "2026-08-04 14:17:33",
+  "last_activity_at": "2026-08-04 17:01:23",
   "last_report_date": "2026-08-03",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
