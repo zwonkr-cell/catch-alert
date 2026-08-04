@@ -40,9 +40,17 @@
     {
       "company": "디앤디프라퍼티솔루션",
       "at": "2026-08-03 18:38:17"
+    },
+    {
+      "company": "한영회계법인",
+      "at": "2026-08-04 14:17:19"
+    },
+    {
+      "company": "이연제약",
+      "at": "2026-08-04 14:17:29"
     }
   ],
-  "last_activity_at": "2026-08-04 06:56:55",
+  "last_activity_at": "2026-08-04 14:17:33",
   "last_report_date": "2026-08-03",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
