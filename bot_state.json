@@ -2,10 +2,6 @@
   "report_initialized": true,
   "sent_log": [
     {
-      "company": "악사손해보험",
-      "at": "2026-08-03 11:14:50"
-    },
-    {
       "company": "코스메카코리아",
       "at": "2026-08-03 14:57:38"
     },
@@ -76,9 +72,13 @@
     {
       "company": "신풍제약",
       "at": "2026-08-05 10:58:50"
+    },
+    {
+      "company": "휴스틸",
+      "at": "2026-08-05 14:15:59"
     }
   ],
-  "last_activity_at": "2026-08-05 10:58:54",
+  "last_activity_at": "2026-08-05 14:16:02",
   "last_report_date": "2026-08-04",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
