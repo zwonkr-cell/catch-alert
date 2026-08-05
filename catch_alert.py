@@ -323,14 +323,22 @@ def classify_error(raw_text):
             "action": "네, 확인이 필요해요. 이 알림 내용을 개발 세션(클로드)에 전달해 주세요."}
 
 
+# 크리티컬(🔴)만 텔레그램 전송. 나머지(proxy/blocked/network/state)는 로그만 남긴다.
+# 근거: 12시간 하트비트가 장기 무수집을 어차피 잡아주고, 일시 장애 알림은 스팸이었음(2026-07 사용자 요청).
+CRITICAL_KEYS = {"structure", "unknown"}
+
+
 def notify_error(cfg, state, raw_text):
-    """오류를 분류해 쉬운 설명으로 노티. 일시적 오류는 연속 2회부터, 같은 유형은 12h 1회."""
+    """오류를 분류해 쉬운 설명으로 노티. 크리티컬(🔴) 유형만 전송, 같은 유형은 12h 1회."""
     raw_text = (raw_text or "").strip() or "알 수 없는 오류"
     summary = raw_text.splitlines()[-1][:100]
     info = classify_error(raw_text)
     consec = state.setdefault("consec_err", {})
     cnt = consec.get(info["key"], 0) + 1
     consec[info["key"]] = cnt
+    if info["key"] not in CRITICAL_KEYS:
+        log.info("[%s] 비크리티컬 오류 → 텔레그램 생략(로그만): %s", info["key"], summary)
+        return
     if cnt < info["min_consec"]:
         log.info("[%s] 1회성 오류 → 알림 보류(연속 %d회부터 알림)", info["key"], info["min_consec"])
         return
@@ -522,22 +530,13 @@ def resolve_transport(cfg):
 
 def handle_transport(cfg, state):
     """
-    연결 방식 변화를 감지해 노티.
-    캐치는 GitHub(해외 IP)에서 프록시 우회가 '정상 상태'이므로,
-    최초 실행은 조용히 기록만 하고 이후 '변화'가 있을 때만 알립니다.
+    연결 방식(직접↔프록시) 변화를 기록. 프록시 우회는 정상 동작의 일부이므로
+    텔레그램 알림은 보내지 않는다(2026-07 사용자 요청: 프록시 알림 전면 중단, 로그만).
     """
     cur = LAST_TRANSPORT
     prev = state.get("transport")
-    if prev is None:
-        state["transport"] = cur
-        return
-    cur_p = cur.startswith("proxy")
-    prev_p = str(prev).startswith("proxy")
-    if cur_p and not prev_p:
-        _plain_send_all(cfg, "🛡 [캐치봇] 직접 연결이 차단되어 한국 프록시로 즉시 우회했어요.\n"
-                             "수집·알림은 정상 작동 중이고, 조치는 필요 없어요.")
-    elif (not cur_p) and prev_p:
-        _plain_send_all(cfg, "✅ [캐치봇] 직접 연결이 복구되어 프록시 우회를 종료했어요.")
+    if prev is not None and cur != prev:
+        log.info("연결 방식 변경: %s → %s (알림 없음)", prev, cur)
     state["transport"] = cur
 
 
