@@ -1,5 +1,5 @@
 {
-  "last_activity_at": "2026-09-02 11:27:55",
+  "last_activity_at": "2026-09-02 16:14:56",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
   "consec_err": {},
