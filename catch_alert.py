@@ -30,6 +30,7 @@ from datetime import datetime, timezone, timedelta
 from urllib import request, parse
 from urllib.error import URLError, HTTPError
 
+from concurrent import futures  # 프록시 후보 병렬 탐색
 import requests  # 캐치 수집(프록시 지원)용. 텔레그램 전송은 표준 urllib 유지.
 
 try:
@@ -403,13 +404,38 @@ REQ_HEADERS = {
     "Referer": "https://www.catch.co.kr/",
     "Accept": "application/json, text/plain, */*",
 }
+# 무료 한국 프록시 목록. 한 곳이 죽어도 나머지로 버티도록 여러 곳을 본다.
+# (2026-10 실측 수집량: geonode 25 · proxifly 56(http/https만) · proxyscrape 11 → 합집합 약 92개.
+#  이전 2곳 조합은 27개뿐이라 한국 낮처럼 죽은 프록시가 많을 때 빈손으로 끝나는 일이 잦았다.)
 PROXY_SOURCES = [
+    # 최근 확인 순 한국 목록
     "https://proxylist.geonode.com/api/proxy-list?country=KR&protocols=http%2Chttps"
     "&limit=100&page=1&sort_by=lastChecked&sort_type=desc",
+    # 국가별로 갈라 매시 갱신되는 목록 — 한국 http/https 가 가장 많이 나온다
+    "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/countries/KR/data.txt",
+    # proxyscrape 신 API · 구 API(폴백)
+    "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies"
+    "&country=kr&protocol=http&proxy_format=ipport&format=text",
     "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=kr",
 ]
-MAX_PROXY_TRIES = 40
-PROXY_TIMEOUT = 8
+MAX_PROXY_TRIES = 120     # 병렬로 재니 후보를 넉넉히 본다
+PROXY_TIMEOUT = 6
+PROXY_WORKERS = 16        # 동시에 찔러 보는 수
+PROXY_DEADLINE = 75       # 탐색 전체 제한(초)
+
+# "http://1.2.3.4:8080" · "1.2.3.4:8080" · "1.2.3.4:8080:KR:..." 를 모두 받는다.
+_IPPORT_RE = re.compile(r"^(?:(\w+)://)?(\d{1,3}(?:\.\d{1,3}){3}):(\d{2,5})")
+
+
+def _parse_proxy_line(ln):
+    """프록시 한 줄에서 ip:port 를 뽑는다. socks 는 requests 의 http 프록시로
+       쓸 수 없으므로 버린다(proxifly 한국 목록은 절반 이상이 socks5 다)."""
+    m = _IPPORT_RE.match(ln.strip())
+    if not m:
+        return None
+    if m.group(1) and m.group(1).lower() not in ("http", "https"):
+        return None
+    return "%s:%s" % (m.group(2), m.group(3))
 
 
 def _small_test_url(cfg):
@@ -425,21 +451,63 @@ def get_kr_proxy_candidates():
     cands = []
     for url in PROXY_SOURCES:
         try:
-            r = requests.get(url, timeout=15)
+            r = requests.get(url, timeout=12)
             if "geonode" in url:
                 for p in r.json().get("data", []):
                     cands.append(f"{p['ip']}:{p['port']}")
             else:
-                cands += [ln.strip() for ln in r.text.splitlines() if ":" in ln]
+                for ln in r.text.splitlines():
+                    one = _parse_proxy_line(ln)
+                    if one:
+                        cands.append(one)
         except Exception as e:
             log.warning("프록시 목록 수집 실패(%s): %s", url[:45], e)
-    return list(dict.fromkeys(cands))  # 순서 유지 dedupe
+    uniq = list(dict.fromkeys(cands))  # 순서 유지 dedupe
+    log.info("프록시 후보 %d개 수집(소스 %d곳)", len(uniq), len(PROXY_SOURCES))
+    return uniq
+
+
+def _proxy_dict(p):
+    return {"http": f"http://{p}", "https": f"http://{p}"}
+
+
+def _probe_proxy(p, test_url):
+    """이 프록시로 캐치가 실제로 열리는지 한 번 찔러 본다."""
+    try:
+        r = requests.get(test_url, headers=REQ_HEADERS, proxies=_proxy_dict(p),
+                         timeout=PROXY_TIMEOUT)
+        if r.status_code == 200 and "recruitData" in r.text:
+            return p
+    except Exception:
+        pass
+    return None
+
+
+def _find_working_proxy(cands, test_url):
+    """후보를 한꺼번에 찔러 먼저 열리는 것을 쓴다.
+       하나씩 순서대로 8초를 기다리면 40개에 최대 5분이라, 죽은 프록시가 많은
+       한국 낮 시간대에는 시간만 쓰고 빈손으로 끝나는 일이 잦았다."""
+    if not cands:
+        return None
+    ex = futures.ThreadPoolExecutor(max_workers=PROXY_WORKERS)
+    try:
+        jobs = [ex.submit(_probe_proxy, p, test_url) for p in cands]
+        try:
+            for fut in futures.as_completed(jobs, timeout=PROXY_DEADLINE):
+                got = fut.result()
+                if got:
+                    return got
+        except futures.TimeoutError:
+            log.warning("프록시 탐색 %d초 안에 통하는 것을 못 찾았습니다", PROXY_DEADLINE)
+    finally:
+        ex.shutdown(wait=False, cancel_futures=True)
+    return None
 
 
 LAST_TRANSPORT = "direct"   # 이번 실행의 연결 방식 ("direct" | "proxy:IP")
 
 
-def resolve_transport(cfg):
+def resolve_transport(cfg, state=None):
     """반환: proxies dict(프록시 사용) 또는 None(직접 연결). 둘 다 불가하면 예외."""
     global LAST_TRANSPORT
     test_url = _small_test_url(cfg)
@@ -453,19 +521,26 @@ def resolve_transport(cfg):
         log.warning("직접 연결 status=%s → 한국 프록시 탐색", r.status_code)
     except Exception as e:
         log.warning("직접 연결 실패(%s) → 한국 프록시 탐색", e)
-    # 2) 한국 프록시 탐색
-    cands = get_kr_proxy_candidates()
-    log.info("한국 프록시 후보 %d개 중 통하는 것 탐색...", len(cands))
-    for p in cands[:MAX_PROXY_TRIES]:
-        prox = {"http": f"http://{p}", "https": f"http://{p}"}
-        try:
-            r = requests.get(test_url, headers=REQ_HEADERS, proxies=prox, timeout=PROXY_TIMEOUT)
-            if r.status_code == 200 and "recruitData" in r.text:
-                log.info("프록시 사용: %s", p)
-                LAST_TRANSPORT = f"proxy:{p}"
-                return prox
-        except Exception:
-            continue
+    # 2) 지난 실행에서 통하던 프록시부터 — 무료 프록시도 몇 시간은 살아 있다.
+    #    목록을 새로 받아 수십 개를 찌르는 것보다 훨씬 빠르고, 낮에 특히 효과가 크다.
+    last = (state or {}).get("last_proxy")
+    if last and _probe_proxy(last, test_url):
+        log.info("직전 프록시 재사용: %s", last)
+        LAST_TRANSPORT = f"proxy:{last}"
+        return _proxy_dict(last)
+    # 3) 목록에서 새로 탐색(병렬)
+    cands = [c for c in get_kr_proxy_candidates() if c != last][:MAX_PROXY_TRIES]
+    log.info("한국 프록시 후보 %d개를 %d개씩 동시에 탐색...", len(cands), PROXY_WORKERS)
+    found = _find_working_proxy(cands, test_url)
+    if found:
+        log.info("프록시 사용: %s", found)
+        LAST_TRANSPORT = f"proxy:{found}"
+        if state is not None:
+            state["last_proxy"] = found
+            state["last_proxy_at"] = _now_iso()
+        return _proxy_dict(found)
+    if state is not None:
+        state.pop("last_proxy", None)
     raise RuntimeError("작동하는 한국 프록시를 찾지 못했습니다(캐치 접근 불가).")
 
 
@@ -502,13 +577,13 @@ def http_get_json(url, timeout, proxies=None, tries=3):
     raise last_err or RuntimeError("캐치 수집 실패")
 
 
-def fetch_all(cfg):
+def fetch_all(cfg, state=None):
     """
     직접/프록시 경로를 정한 뒤, api_url 의 필터를 유지하되 pageSize/curpage 를
     조절해 전체 공고를 수집. intTotalRecordCount 를 맹신하지 않고, 덜 찬(또는 빈)
     페이지가 나오면 멈춘다는 규칙으로 견고하게 페이징.
     """
-    transport = resolve_transport(cfg)   # None(직접) 또는 proxies dict
+    transport = resolve_transport(cfg, state)   # None(직접) 또는 proxies dict
 
     parts = parse.urlsplit(cfg["api_url"])
     qs = dict(parse.parse_qsl(parts.query, keep_blank_values=True))
@@ -750,7 +825,7 @@ def run(cfg, state, dry_run=False):
     seen, is_fresh = load_seen()
 
     try:
-        items, total = fetch_all(cfg)
+        items, total = fetch_all(cfg, state)
     except Exception:
         # 프록시 포함 수집 실패 → main() 이 오류 원문을 텔레그램으로 노티하도록 재전파.
         # seen 은 그대로라 다음 성공 실행에서 놓친 공고까지 알림됨(누락 없음).
