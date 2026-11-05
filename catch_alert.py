@@ -2,7 +2,7 @@
 """
 캐치(catch.co.kr) 채용공고 → 텔레그램 알림
 ────────────────────────────────────────────────────────────
-매시 정각 Windows 작업 스케줄러가 이 스크립트를 실행합니다.
+GitHub Actions(외부 트리거가 주간 10분마다 호출, TRIGGER_SETUP.md) 또는 Windows 작업 스케줄러가 실행합니다.
 설정한 필터(config.json 의 api_url)에 새로 올라온 공고만 골라
 텔레그램으로 지정한 수신자들에게 알림을 보냅니다.
 
@@ -63,6 +63,12 @@ PAGE_SIZE = 100
 # 한 번 실행에서 이보다 많은 '신규'가 잡히면, 오래된 것부터 이 개수만 보내고
 # 나머지는 다음 실행으로 미룹니다(폭주 방지 · 절대 폐기하지 않음).
 MAX_NOTIFY_PER_RUN_DEFAULT = 20
+
+# 전송 시간 상한: GitHub Actions 의 timeout-minutes(10분) 안에 기록 저장·커밋까지 끝내도록,
+# 실행 시작 후 이 시간이 지나면 새 전송을 시작하지 않고 남은 공고는 다음 실행으로 넘깁니다.
+SEND_BUDGET_SEC = 360
+MAX_SEND_FAILS = 2          # 연속으로 이만큼 전송 실패(텔레그램 장애 의심) → 남은 공고는 다음 실행에서
+_T0 = time.monotonic()      # 프로세스 시작 시각(전송 시간 상한 기준)
 
 
 class TelegramAuthError(Exception):
@@ -328,7 +334,8 @@ def classify_error(raw_text):
 
 
 # 크리티컬(🔴)만 텔레그램 전송. 나머지(proxy/blocked/network/state)는 로그만 남긴다.
-# 근거: 12시간 하트비트가 장기 무수집을 어차피 잡아주고, 일시 장애 알림은 스팸이었음(2026-07 사용자 요청).
+# 근거: 24시간 하트비트가 장기 무수집을 어차피 잡아주고, 일시 장애 알림은 스팸이었음(2026-07 사용자 요청).
+#       (하트비트는 수집에 실패한 실행에서도 확인 → main() 참고)
 CRITICAL_KEYS = {"structure", "unknown"}
 
 
@@ -337,12 +344,13 @@ def notify_error(cfg, state, raw_text):
     raw_text = (raw_text or "").strip() or "알 수 없는 오류"
     summary = raw_text.splitlines()[-1][:100]
     info = classify_error(raw_text)
-    consec = state.setdefault("consec_err", {})
-    cnt = consec.get(info["key"], 0) + 1
-    consec[info["key"]] = cnt
+    # 로그만 남기는 유형은 state 도 건드리지 않음(장애 중 실행마다 bot_state.json 이 바뀌어 커밋이 쌓이지 않게)
     if info["key"] not in CRITICAL_KEYS:
         log.info("[%s] 비크리티컬 오류 → 텔레그램 생략(로그만): %s", info["key"], summary)
         return
+    consec = state.setdefault("consec_err", {})
+    cnt = consec.get(info["key"], 0) + 1
+    consec[info["key"]] = cnt
     if cnt < info["min_consec"]:
         log.info("[%s] 1회성 오류 → 알림 보류(연속 %d회부터 알림)", info["key"], info["min_consec"])
         return
@@ -414,6 +422,10 @@ def _validate_catch(status, text):
     """netkit 용 응답 검증(작업 스레드에서 호출). ('ok', data) | (종류, 사유)"""
     if status in (403, 429):
         return "blocked", "HTTP %d" % status
+    if status in (404, 410):
+        # https 라 프록시가 꾸며낼 수 없는 '캐치 서버의 답' → API 주소가 바뀐 것으로 의심.
+        # (netkit 은 프록시 2곳 이상이 같은 답을 줄 때만 '구조 변경'으로 판단해 오탐을 막음)
+        return "empty", "HTTP %d(API 주소 변경 의심)" % status
     if status != 200:
         return "bad", "HTTP %d" % status
     try:
@@ -439,13 +451,18 @@ def handle_transport(net, state):
     """
     연결 방식(직접↔프록시) 변화를 기록. 프록시 우회는 정상 동작의 일부이므로
     텔레그램 알림은 보내지 않는다(2026-07 사용자 요청: 프록시 알림 전면 중단, 로그만).
+    state 에는 종류('direct'/'proxy')만 저장한다. 어느 프록시였는지는 [net] 로그에 남고,
+    바뀌는 주소까지 저장하면 실행마다 bot_state.json 이 달라져 불필요한 커밋이 쌓인다.
     """
     cur = net.label
     if not cur:
         return
+    cur = "direct" if cur == "direct" else "proxy"
     prev = state.get("transport")
-    if prev is not None and cur != prev:
-        log.info("연결 방식 변경: %s → %s (알림 없음)", prev, cur)
+    if prev is not None:
+        prev = "direct" if prev == "direct" else "proxy"
+        if cur != prev:
+            log.info("연결 방식 변경: %s → %s (알림 없음)", prev, cur)
     state["transport"] = cur
 
 
@@ -716,6 +733,7 @@ def run(cfg, state, dry_run=False):
         net.finalize()             # 통한/죽은 프록시를 풀(bot_state.json)에 반영
         log.info(net.summary())
         if not dry_run:
+            save_bot_state(state)  # 시트 기록(느릴 수 있음) 전에 먼저 저장 → 도중에 끊겨도 상태 보존
             for p in sheet_rows:   # 시트 기록은 알림을 모두 보낸 뒤에(알림 지연 방지)
                 log_to_sheet(p)
 
@@ -806,8 +824,9 @@ def _run(cfg, state, net, sheet_rows, dry_run):
                     len(new_items), len(to_send), len(deferred))
 
     newly_done = set()
+    fail_streak = 0
     try:
-        for it in to_send:
+        for idx, it in enumerate(to_send):
             rid = item_id(it)
             text = build_message(it, cfg, scraped_ts)
             if dry_run:
@@ -815,11 +834,22 @@ def _run(cfg, state, net, sheet_rows, dry_run):
                          rid, "-" * 40, text, "-" * 40)
                 newly_done.add(rid)
                 continue
+            if time.monotonic() - _T0 > SEND_BUDGET_SEC:
+                log.warning("실행 %d초 초과 → 남은 %d건은 다음 실행에서 전송", SEND_BUDGET_SEC, len(to_send) - idx)
+                break
+            if fail_streak >= MAX_SEND_FAILS:
+                log.warning("전송 연속 %d회 실패(텔레그램 장애 의심) → 남은 %d건은 다음 실행에서 전송",
+                            fail_streak, len(to_send) - idx)
+                break
             if notify_recipients(cfg["bot_token"], cfg["chat_ids"], text, cfg):
                 newly_done.add(rid)
+                fail_streak = 0
+                # 보내자마자 기록: 실행이 도중에 끊겨도(시간 초과 등) 이미 보낸 공고를 다시 보내지 않음
+                save_seen(seen | newly_done)
                 sheet_rows.append(_sheet_payload(it, rid, cfg, scraped_ts))
                 log.info("전송 완료 RecruitID=%s (%s)", rid, it.get("CompName"))
             else:
+                fail_streak += 1
                 log.warning("전송 실패(일시적) RecruitID=%s → 다음 실행 때 재시도", rid)
             time.sleep(0.7)  # 공고 간 간격
     finally:
@@ -830,10 +860,10 @@ def _run(cfg, state, net, sheet_rows, dry_run):
                          len(newly_done), len(seen | newly_done))
             note_activity(state)   # 새 공고 전송 = 활동 → 하트비트 타이머 리셋
 
-    # 미뤄둔 공고가 있으면 안내 1건
+    # 미뤄둔 공고가 있으면 안내 1건(문구는 기존 그대로 유지)
     if not dry_run and newly_done and deferred:
         notice = (f"ℹ️ 조건에 맞는 새 공고가 많아 {len(newly_done)}건을 먼저 보냈어요. "
-                  f"남은 {len(deferred)}건은 다음 실행 때 이어서 알려드릴게요.")
+                  f"남은 {len(new_items) - len(newly_done)}건은 다음 정각에 이어서 알려드릴게요.")
         notify_recipients(cfg["bot_token"], cfg["chat_ids"], notice, cfg)
 
 
@@ -907,6 +937,10 @@ def main():
         else:
             try:
                 notify_error(cfg, state, traceback.format_exc())
+                if not args.test and not args.resend_latest:
+                    # 프록시 장애처럼 '로그만 남기는' 오류가 며칠 이어져도 무소식이 되지 않도록,
+                    # 수집에 실패한 실행에서도 24시간 하트비트(기존 '신규 없음' 노티)를 확인한다.
+                    maybe_heartbeat(cfg, state, 0, 0)
             except Exception as ne:
                 log.error("오류 노티 전송 실패: %s", ne)
     finally:

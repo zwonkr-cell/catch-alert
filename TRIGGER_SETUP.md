@@ -26,6 +26,14 @@ GitHub Actions 의 예약 실행(`schedule`)은 "여유 있을 때 실행"하는
 
 ---
 
+## 0단계 · 먼저 세 리포의 새 버전을 main 에 반영
+
+`incruit-bot`, `job-bot`, `catch-alert` **세 리포 모두** 새 버전(이 문서가 들어 있는 버전)이 `main` 에 들어간 뒤에 아래를 진행하세요.
+외부 트리거는 실행 요청에 `mode=run` 을 함께 보내는데, 예전 워크플로는 이 입력이 없어서 요청을 **422 로 거절**합니다.
+덕분에 예전 코드가 10분마다 겹쳐 도는 일(중복 알림·push 실패)은 생기지 않고, 대신 2단계의 `testDispatch` 에서 422 가 보이면 "아직 반영 안 된 리포가 있다"는 뜻이에요.
+
+---
+
 ## 1단계 · GitHub 토큰 만들기 (공통)
 
 1. github.com → 오른쪽 위 프로필 사진 → **Settings**
@@ -75,7 +83,7 @@ GitHub Actions 의 예약 실행(`schedule`)은 "여유 있을 때 실행"하는
 | Execution schedule | Every 10 minutes (원하면 시간대 제한) |
 | ADVANCED → Request method | `POST` |
 | ADVANCED → Headers | `Authorization: Bearer <1단계 토큰>` · `Accept: application/vnd.github+json` · `X-GitHub-Api-Version: 2022-11-28` · `Content-Type: application/json` |
-| ADVANCED → Request body | `{"ref":"main"}` |
+| ADVANCED → Request body | `{"ref":"main","inputs":{"mode":"run"}}` |
 
 저장 후 **TEST RUN** → 응답 코드 **204** 면 성공입니다.
 
@@ -88,10 +96,12 @@ GitHub Actions 의 예약 실행(`schedule`)은 "여유 있을 때 실행"하는
 - **잘 되는지**: 각 리포 Actions 탭에서 실행 이벤트가 `workflow_dispatch` 로 약 10분 간격이면 정상입니다.
 - **401** (Bad credentials): 토큰 만료/오타 → 1단계를 다시 하고 `GH_TOKEN` 교체.
 - **403 / 404**: 토큰에 3개 리포가 선택됐는지, 권한이 `Actions: Read and write` 인지 확인.
-- **422**: 워크플로 파일 이름(`run.yml`, `catch-alert.yml`)이나 브랜치(`main`)가 바뀌었는지 확인.
-- 실행이 겹쳐도 괜찮습니다: 워크플로마다 `concurrency` 로 한 번에 하나만 돌고, 기다리는 실행은 가장 최근 1건만 남아요.
+- **422**: 그 리포의 `main` 에 새 버전이 아직 반영되지 않았거나(0단계), 워크플로 파일 이름(`run.yml`, `catch-alert.yml`)이나 브랜치(`main`)가 바뀌었는지 확인.
+- 실행이 겹쳐도 괜찮습니다: 워크플로마다 `concurrency` 로 한 번에 하나만 돌고(기다리는 실행은 가장 최근 1건만 남음),
+  뒤 실행은 시작할 때 앞 실행이 저장한 **최신 기록**을 받아 오기 때문에 방금 보낸 공고를 다시 보내지 않아요.
 - 외부 트리거가 멈춰도 GitHub 자체 예약(안전망)이 계속 돌기 때문에 알림이 끊기진 않습니다(대신 늦어질 수 있음).
 - 비용: 공개 리포의 GitHub Actions 는 무료이고, 한 번 실행에 15~40초라 부담이 거의 없습니다.
+- **되돌릴 때**: 봇 코드를 예전 버전으로 되돌리기 **전에** 먼저 `removeDispatchTrigger` 를 실행(또는 cron-job.org 작업 끄기)하세요.
 
 ## 실행 모드 (각 리포 Actions → 워크플로 → Run workflow)
 

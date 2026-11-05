@@ -29,9 +29,9 @@ on:
 permissions:
   contents: write
 
-# 실행이 겹치지 않게 직렬화(상태파일 push 충돌 방지). 대기 중인 실행은 가장 최근 1건만 남습니다.
+# 실행이 겹치지 않게 브랜치별로 직렬화(중복 알림·상태파일 push 충돌 방지). 대기 중인 실행은 가장 최근 1건만 남습니다.
 concurrency:
-  group: catch-alert
+  group: catch-alert-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -41,6 +41,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # 실행이 만들어진 시점이 아니라 '지금' 브랜치 최신 커밋을 받음 → 앞 실행이 저장한 seen_ids 를 이어받아
+          # 대기했다가 시작한 실행이 방금 보낸 공고를 다시 보내지 않음
+          ref: ${{ github.ref }}
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -58,14 +62,15 @@ jobs:
           SHEET_WEBHOOK_URL: ${{ secrets.SHEET_WEBHOOK_URL }}
           # api_url 은 config.json 에 있어 별도 시크릿이 필요 없습니다(민감정보 아님).
           # API_URL: ${{ secrets.API_URL }}
+          MODE: ${{ github.event.inputs.mode }}
+        # exec: 시간 초과로 취소될 때 러너의 중단 신호가 파이썬에 바로 전달돼 상태 저장(finally)이 실행됨
         run: |
-          MODE="${{ github.event.inputs.mode }}"
           if [ "$MODE" = "test" ]; then
-            python catch_alert.py --test
+            exec python catch_alert.py --test
           elif [ "$MODE" = "dry-run" ]; then
-            python catch_alert.py --dry-run
+            exec python catch_alert.py --dry-run
           else
-            python catch_alert.py
+            exec python catch_alert.py
           fi
 
       - name: Persist state (seen_ids.json, bot_state.json)
@@ -80,9 +85,9 @@ jobs:
             for i in 1 2 3; do
               git push && exit 0
               echo "push 실패 → 최신 커밋을 받아 다시 시도 ($i/3)"
-              git pull --rebase -X theirs origin "$GITHUB_REF_NAME" || { git rebase --abort; sleep 3; }
+              git pull --rebase -X theirs origin "$GITHUB_REF_NAME" || { git rebase --abort 2>/dev/null || true; sleep 3; }
             done
-            exit 1
+            git push
           else
             echo "상태 변경 없음 - 커밋 생략"
           fi

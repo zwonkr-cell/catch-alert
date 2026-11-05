@@ -9,6 +9,9 @@
  *   이 스크립트는 5분마다 깨어나 시간대별 간격(기본: 주간 10분·야간 60분)에 맞춰 3개 봇을 실행시킵니다.
  *
  * [설치] 약 5분 — 자세한 설명은 catch-alert 리포의 TRIGGER_SETUP.md
+ *   0) 먼저 세 리포(incruit-bot, job-bot, catch-alert)의 새 버전이 main 에 반영돼 있어야 합니다.
+ *      (예전 워크플로는 'mode' 입력이 없어 이 스크립트의 요청을 422 로 거절합니다 → 예전 코드가
+ *       10분마다 겹쳐 도는 일을 막는 안전장치)
  *   1) GitHub 토큰: github.com → 오른쪽 위 프로필 → Settings → Developer settings
  *        → Personal access tokens → Fine-grained tokens → Generate new token
  *        · Repository access: Only select repositories → incruit-bot, job-bot, catch-alert
@@ -22,6 +25,7 @@
  *        실행 로그에 3개 모두 "OK" 가 보이면 성공(GitHub → Actions 탭에 실행이 바로 생김)
  *   4) createDispatchTrigger → ▶실행 (딱 1회) → 이후 자동
  *   · 멈추기: removeDispatchTrigger  · 상태 보기: showDispatchStatus
+ *   · 봇 코드를 예전 버전으로 되돌릴 때는 먼저 removeDispatchTrigger 를 실행하세요.
  *
  * 시트 기록 스크립트(google_sheets_logger.gs)와 같은 프로젝트에 '새 파일'로 넣어도 되고
  * (이름이 겹치지 않게 모두 dispatch 접두어를 씀), 별도 프로젝트로 만들어도 됩니다.
@@ -81,7 +85,8 @@ function dispatchAll_(targets) {
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28'
       },
-      payload: JSON.stringify({ ref: DISPATCH_REF }),
+      // inputs.mode 를 함께 보냄: 새 워크플로만 받아들이고(예전 버전은 422 로 거절) 항상 '정상 실행'으로 돌게 함
+      payload: JSON.stringify({ ref: DISPATCH_REF, inputs: { mode: 'run' } }),
       muteHttpExceptions: true
     };
   });
@@ -112,9 +117,15 @@ function dispatchHandleResults_(results) {
   var lines = needsHuman.map(function (r) {
     return '· ' + r.target.name + ': HTTP ' + r.code + ' ' + r.body.slice(0, 120);
   });
-  var hint = needsHuman.some(function (r) { return r.code === 401; })
-    ? 'GitHub 토큰(GH_TOKEN)이 만료됐거나 잘못됐어요. 새 토큰을 만들어 스크립트 속성 GH_TOKEN 을 바꿔 주세요.'
-    : '토큰 권한(Actions: Read and write)·대상 리포 선택·워크플로 파일 이름을 확인해 주세요.';
+  var hint;
+  if (needsHuman.some(function (r) { return r.code === 401; })) {
+    hint = 'GitHub 토큰(GH_TOKEN)이 만료됐거나 잘못됐어요. 새 토큰을 만들어 스크립트 속성 GH_TOKEN 을 바꿔 주세요.';
+  } else if (needsHuman.every(function (r) { return r.code === 422; })) {
+    hint = '해당 리포의 main 에 새 워크플로(실행 모드 mode 입력이 있는 버전)가 아직 반영되지 않았거나 ' +
+           '워크플로 파일 이름이 바뀌었어요. 세 리포 모두 새 버전이 main 에 들어갔는지 확인해 주세요.';
+  } else {
+    hint = '토큰 권한(Actions: Read and write)·대상 리포 선택·워크플로 파일 이름을 확인해 주세요.';
+  }
   var msg = '⚠️ [봇 외부 트리거] GitHub 실행 요청이 실패했어요\n\n' + lines.join('\n') +
             '\n\n■ 조치\n' + hint +
             '\n(고치기 전까지는 GitHub 자체 예약으로만 가끔 실행돼 알림이 늦어질 수 있어요)';

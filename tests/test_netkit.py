@@ -11,6 +11,7 @@ import socket
 import threading
 import unittest
 import urllib.request
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -252,19 +253,36 @@ class NetkitTest(unittest.TestCase):
             n.get(self.base + "/empty", validate, budget=8)
         self.assertEqual(cm.exception.kind, "network")
 
-    # ── 8. 쓰던 프록시가 실행 중 죽으면 예비 프록시로 전환
+    # ── 8. 쓰던 프록시가 실행 중 죽으면 예비 프록시로 전환(예비 = 같은 경주에서 함께 성공한 것)
     def test_failover_to_backup(self):
         Target.geo_block = True
         flaky, _ = self.proxy("good", "p-flaky", die_after=1)
         backup, _ = self.proxy("good", "p-backup", delay=0.3)
-        n = self.net({"proxy_pool": [{"p": flaky, "ok": netkit._now_min(), "f": 0},
-                                     {"p": backup, "ok": netkit._now_min(), "f": 0}]})
+        self.fresh = [flaky, backup]           # 풀이 비어 있으면 처음부터 전체 경주
+        n = self.net()
         _, via1 = n.get(self.base + "/p1", validate)
         self.assertEqual(via1, netkit.proxy_label(flaky))
         self.assertEqual(n.backups, [backup])
         _, via2 = n.get(self.base + "/p2", validate)
         self.assertEqual(via2, netkit.proxy_label(backup))
-        self.assertTrue(any("예비" in m for m in self.logs))
+        self.assertTrue(any("예비 프록시로 전환" in m for m in self.logs))
+
+    # ── 8b. 지난번 프록시(선두)가 혼자 이겨 예비가 없을 때 죽으면 → 전체 재경주로 다른 풀 항목 사용
+    def test_failover_after_lead_alone(self):
+        Target.geo_block = True
+        flaky, _ = self.proxy("good", "p-flaky", die_after=1)
+        other, other_st = self.proxy("good", "p-other", delay=0.3)
+        n = self.net({"proxy_pool": [{"p": flaky, "ok": netkit._now_min(), "f": 0},
+                                     {"p": other, "ok": netkit._now_min(), "f": 0}]})
+        _, via1 = n.get(self.base + "/p1", validate)
+        self.assertEqual(via1, netkit.proxy_label(flaky))
+        self.assertEqual(n.backups, [])
+        self.assertEqual(other_st["n"], 0)     # 선두가 통하면 나머지 풀은 출발하지 않음
+        t = time.monotonic()
+        _, via2 = n.get(self.base + "/p2", validate)
+        self.assertEqual(via2, netkit.proxy_label(other))
+        self.assertLess(time.monotonic() - t, 2.0)   # 이미 프록시를 쓴 실행 → 선두 대기 없이 바로 전체 경주
+        self.assertTrue(any("예비 경로로 전환" in m for m in self.logs))
 
     # ── 9. 응답을 찔끔찔끔 주는 프록시는 시도 상한(cap)으로 끊고 다른 프록시 사용
     def test_trickle_capped(self):
@@ -305,12 +323,79 @@ class NetkitTest(unittest.TestCase):
         Target.geo_block = True
         fast, _ = self.proxy("good", "p-fast")
         slow, _ = self.proxy("trickle", "p-slowtrickle")
-        n = self.net({"proxy_pool": [{"p": slow, "ok": netkit._now_min(), "f": 0},
-                                     {"p": fast, "ok": netkit._now_min(), "f": 0}]},
-                     proxy_cap=20, proxy_timeout=(1, 5))
+        self.fresh = [slow, fast]
+        n = self.net(proxy_cap=20, proxy_timeout=(1, 5))
         _, via = n.get(self.base + "/a", validate)
         self.assertEqual(via, netkit.proxy_label(fast))
         self.assertNotIn(slow, n.bad_proxies)
+
+    # ── 10b. 선두(지난번 프록시)가 통하면 혼자 끝: 나머지 풀·새 후보는 출발하지 않고 state 도 그대로
+    def test_lead_wins_alone_no_churn(self):
+        Target.geo_block = True
+        lead, _ = self.proxy("good", "p-lead", delay=0.2)
+        fast, fast_st = self.proxy("good", "p-fast")
+        dead = dead_proxy()
+        now = netkit._now_min()
+        state = {"proxy_pool": [{"p": lead, "ok": now, "f": 0},
+                                {"p": fast, "ok": now, "f": 0},
+                                {"p": dead, "ok": now, "f": 0}],
+                 "transport": "proxy"}
+        snap = [dict(e) for e in state["proxy_pool"]]
+        self.fresh = [fast]
+        n = self.net(state)
+        _, via = n.get(self.base + "/a", validate)
+        self.assertEqual(via, netkit.proxy_label(lead))   # 더 빠른 fast 가 있어도 선두를 계속 씀
+        self.assertEqual(fast_st["n"], 0)
+        self.assertEqual(n.diag["launched"], 2)            # 직접 1 + 선두 1
+        self.assertTrue(any("지난번 프록시 재사용" in m for m in self.logs))
+        n.finalize()
+        self.assertEqual(state["proxy_pool"], snap)        # 죽은 항목도 시도하지 않았으니 기록 변화 없음
+
+    # ── 10c. 선두가 바로 실패하면 기다리지 않고 나머지 출발 → 이긴 프록시가 다음 선두
+    def test_lead_fails_fast_then_rest(self):
+        Target.geo_block = True
+        good, _ = self.proxy("good", "p-good")
+        dead = dead_proxy()
+        now = netkit._now_min()
+        state = {"proxy_pool": [{"p": dead, "ok": now, "f": 0}, {"p": good, "ok": now, "f": 0}]}
+        n = self.net(state, lead_head=5.0)
+        t = time.monotonic()
+        _, via = n.get(self.base + "/a", validate)
+        self.assertEqual(via, netkit.proxy_label(good))
+        self.assertLess(time.monotonic() - t, 1.5)          # lead_head(5초)를 기다리지 않음
+        n.finalize()
+        self.assertEqual([(e["p"], e["f"]) for e in state["proxy_pool"]], [(good, 0), (dead, 1)])
+
+    # ── 10d. 선두가 응답이 없으면 lead_head 뒤에 나머지 출발(선두는 취소, 실패로 기록 안 함)
+    def test_lead_hang_releases_rest(self):
+        Target.geo_block = True
+        hang, _ = self.proxy("hang", "p-hang")
+        good, _ = self.proxy("good", "p-good")
+        now = netkit._now_min()
+        state = {"proxy_pool": [{"p": hang, "ok": now, "f": 0}, {"p": good, "ok": now, "f": 0}]}
+        n = self.net(state, lead_head=0.6, proxy_timeout=(1, 5))
+        t = time.monotonic()
+        _, via = n.get(self.base + "/a", validate)
+        took = time.monotonic() - t
+        self.assertEqual(via, netkit.proxy_label(good))
+        self.assertGreaterEqual(took, 0.5)
+        self.assertLess(took, 2.0)
+        self.assertNotIn(hang, n.bad_proxies)
+        n.finalize()
+        self.assertEqual([e["p"] for e in state["proxy_pool"]], [good, hang])
+
+    # ── 10e. 최근 실패가 있는 맨 앞 항목은 선두로 혼자 달리지 않음(전체 경주)
+    def test_no_lead_when_first_has_failure(self):
+        Target.geo_block = True
+        hang, _ = self.proxy("hang", "p-hang")
+        good, _ = self.proxy("good", "p-good")
+        now = netkit._now_min()
+        n = self.net({"proxy_pool": [{"p": hang, "ok": now, "f": 1}, {"p": good, "ok": now, "f": 1}]},
+                     lead_head=5.0, proxy_timeout=(1, 5))
+        t = time.monotonic()
+        _, via = n.get(self.base + "/a", validate)
+        self.assertEqual(via, netkit.proxy_label(good))
+        self.assertLess(time.monotonic() - t, 1.5)
 
     # ── 11. 새 후보 목록이 늦게 와도 기다렸다가 사용
     def test_waits_for_late_fresh_list(self):
@@ -349,9 +434,14 @@ class NetkitTest(unittest.TestCase):
         n2.finalize()
         self.assertEqual(state["proxy_pool"], before)
 
-    # ── 13. 직접 연결만 쓴 실행은 풀/state 를 건드리지 않음
+    # ── 13. 직접 연결만 쓴 실행은 풀/state 를 건드리지 않음(풀 순서도 그대로)
     def test_direct_run_leaves_state_untouched(self):
-        state = {"proxy_pool": [{"p": "http://8.8.8.8:3128", "ok": netkit._now_min(), "f": 0}],
+        now = netkit._now_min()
+        older = (datetime.now(netkit.KST) - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
+        # 일부러 '최근 성공순'이 아닌 순서(맨 앞 = 지난번 선두) → 직접 연결 실행은 순서도 바꾸지 않아야 함
+        state = {"proxy_pool": [{"p": "http://8.8.8.8:3128", "ok": older, "f": 0},
+                                {"p": "http://9.9.9.9:3128", "ok": now, "f": 0},
+                                {"p": "http://7.7.7.7:3128", "ok": now, "f": 1}],
                  "transport": "direct"}
         snap = {k: (list(v) if isinstance(v, list) else v) for k, v in state.items()}
         n = self.net(state)

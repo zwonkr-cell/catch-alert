@@ -43,6 +43,8 @@ class FakeCatch(BaseHTTPRequestHandler):
         size = int(q.get("pageSize", ["30"])[0])
         if page in FakeCatch.fail_pages:
             return self._send(500, b"oops")
+        if FakeCatch.mode == "404":
+            return self._send(404, b'{"message":"Not Found"}')
         if FakeCatch.mode == "html":
             return self._send(200, "<html>점검중</html>".encode("utf-8"))
         chunk = FakeCatch.items[(page - 1) * size: page * size]
@@ -81,6 +83,8 @@ class CatchTest(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self._orig_state = ca.STATE_PATH
         ca.STATE_PATH = os.path.join(self.tmp, "seen_ids.json")
+        self._orig_state2 = ca.STATE2_PATH                       # 실제 bot_state.json 을 건드리지 않게
+        ca.STATE2_PATH = os.path.join(self.tmp, "bot_state.json")
         self.sent = []
         self._orig_notify = ca.notify_recipients
         ca.notify_recipients = lambda token, chat_ids, text, cfg: self.sent.append(text) or True
@@ -95,8 +99,19 @@ class CatchTest(unittest.TestCase):
     def tearDown(self):
         netkit.fetch_proxy_candidates = self._orig_fetch
         ca.STATE_PATH = self._orig_state
+        ca.STATE2_PATH = self._orig_state2
         ca.notify_recipients = self._orig_notify
         ca.log_to_sheet = self._orig_sheet
+        for k, v in getattr(self, "_patched", {}).items():
+            setattr(ca, k, v)
+
+    def patch(self, name, value):
+        self.__dict__.setdefault("_patched", {}).setdefault(name, getattr(ca, name))
+        setattr(ca, name, value)
+
+    def seen_ids(self):
+        with open(ca.STATE_PATH, encoding="utf-8") as f:
+            return set(json.load(f)["seen_ids"])
 
     def net(self, state=None):
         n = ca.make_net(self.cfg, state if state is not None else {})
@@ -110,6 +125,14 @@ class CatchTest(unittest.TestCase):
         self.assertEqual(ca._validate_catch(200, '{"recruitData": "x"}')[0], "empty")
         self.assertEqual(ca._validate_catch(200, '{"recruitData": null}')[0], "ok")
         self.assertEqual(ca._validate_catch(200, '{"recruitData": [], "intTotalRecordCount": 0}')[0], "ok")
+        self.assertEqual(ca._validate_catch(404, "")[0], "empty")      # API 주소 변경 의심
+        self.assertEqual(ca._validate_catch(500, "")[0], "bad")
+
+    def test_endpoint_gone_is_structure(self):
+        FakeCatch.mode = "404"
+        with self.assertRaises(RuntimeError) as cm:
+            ca.fetch_all(self.cfg, self.net())
+        self.assertEqual(ca.classify_error(str(cm.exception))["key"], "structure")
 
     def test_fetch_all_pages(self):
         items, total, complete = ca.fetch_all(self.cfg, self.net())
@@ -177,6 +200,87 @@ class CatchTest(unittest.TestCase):
             seen = set(json.load(f)["seen_ids"])
         self.assertIn("700000", seen)        # 먼저 보낸 1건은 기록됨(중복 전송 방지)
         self.assertNotIn("700001", seen)     # 실패한 건은 다음 실행에서 재시도
+
+    def _seed_then_add(self, n):
+        ca.run(self.cfg, {})
+        self.sent = []
+        new = [make_item(800000 + i) for i in range(n)]
+        FakeCatch.items = list(reversed(new)) + FakeCatch.items
+        return [str(it["RecruitID"]) for it in new]
+
+    def test_seen_saved_right_after_each_send(self):
+        new = self._seed_then_add(3)
+        on_disk = []
+
+        def send(token, chat_ids, text, cfg):
+            on_disk.append(self.seen_ids())
+            return True
+        ca.notify_recipients = send
+        ca.run(self.cfg, {})
+        self.assertNotIn(new[0], on_disk[0])
+        self.assertIn(new[0], on_disk[1])     # 두 번째 전송 시점엔 첫 공고가 이미 파일에 있음
+        self.assertIn(new[1], on_disk[2])
+
+    def test_stop_after_consecutive_send_failures(self):
+        self._seed_then_add(5)
+        calls = []
+        ca.notify_recipients = lambda token, chat_ids, text, cfg: calls.append(text) or False
+        ca.run(self.cfg, {})
+        self.assertEqual(len(calls), ca.MAX_SEND_FAILS)
+
+    def test_send_budget(self):
+        self._seed_then_add(3)
+        self.patch("SEND_BUDGET_SEC", -1)
+        calls = []
+        ca.notify_recipients = lambda token, chat_ids, text, cfg: calls.append(text) or True
+        ca.run(self.cfg, {})
+        self.assertEqual(calls, [])
+
+    def test_deferred_notice_text_unchanged(self):
+        self._seed_then_add(3)
+        self.cfg["max_notify_per_run"] = 2
+        ca.run(self.cfg, {})
+        self.assertEqual(len(self.sent), 3)
+        self.assertEqual(self.sent[-1], "ℹ️ 조건에 맞는 새 공고가 많아 2건을 먼저 보냈어요. "
+                                        "남은 1건은 다음 정각에 이어서 알려드릴게요.")
+
+    def test_transport_kind_only(self):
+        class N(object):
+            label = "proxy:2.2.2.2:8080"
+        state = {"transport": "proxy:1.1.1.1:80"}
+        ca.handle_transport(N(), state)
+        self.assertEqual(state["transport"], "proxy")
+        N.label = "direct"
+        ca.handle_transport(N(), state)
+        self.assertEqual(state["transport"], "direct")
+
+    def test_noncritical_error_leaves_state_alone(self):
+        state = {}
+        ca.notify_error(self.cfg, state, "RuntimeError: 작동하는 한국 프록시를 찾지 못했습니다(캐치 접근 불가).")
+        self.assertEqual(state, {})
+
+    def test_outage_heartbeat_via_main(self):
+        old = (ca.datetime.now(ca.KST) - ca.timedelta(hours=25)).strftime("%Y-%m-%d %H:%M:%S")
+        state = {"last_activity_at": old, "consec_err": {}}
+        plain = []
+        self.patch("load_config", lambda: self.cfg)
+        self.patch("load_bot_state", lambda: state)
+        self.patch("acquire_single_instance_lock", lambda: True)
+        self.patch("_plain_send_all", lambda cfg, text: plain.append(text) or 1)
+        FakeCatch.fail_pages = {1}                   # 수집 실패(로그만 남기는 'proxy' 유형)
+        argv = sys.argv
+        sys.argv = ["catch_alert.py"]
+        try:
+            ca.main()
+            self.assertEqual(len(plain), 1)
+            self.assertIn("최근 24시간 내 새로 스크래핑된 채용공고가 없어요", plain[0])
+            self.assertEqual(state["consec_err"], {})
+            snap = json.loads(json.dumps(state))
+            ca.main()                                # 바로 다음 실패: 노티도 state 변화도 없음
+            self.assertEqual(len(plain), 1)
+            self.assertEqual(state, snap)
+        finally:
+            sys.argv = argv
 
 
 if __name__ == "__main__":

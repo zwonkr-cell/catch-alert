@@ -15,10 +15,14 @@ incruit-bot · job-bot · catch-alert 세 리포에 **같은 파일**이 들어 
   1) 경주(race): 직접 연결을 먼저 출발시키고, head_start(기본 2.5초) 안에 성공하지 못하거나
      실패하면 즉시 '기억해 둔 프록시(풀) + 무료 한국 프록시 후보'를 최대 32개까지 동시에
      출발시켜 가장 먼저 '정상 응답(검증 통과)'을 준 경로를 씁니다.
+     단, 지난 실행에서 통한 프록시(풀 맨 앞)는 lead_head(기본 2.5초) 동안 '혼자 먼저' 시도합니다.
+     살아 있으면 그대로 쓰고(경로가 매번 바뀌지 않아 state 변화·커밋이 거의 없음), 실패하거나
+     lead_head 안에 못 끝내면 그때 나머지 풀 + 새 후보를 한꺼번에 출발시킵니다.
   2) 빠른 포기: 연결 타임아웃 직접 6초·프록시 4초, 시도 1건당 총 시간 상한(직접 35초·프록시 25초).
-  3) 프록시 풀: 통했던 프록시를 state["proxy_pool"] 에 기억했다가 다음 실행에서 먼저 씁니다.
-     실패가 이어지거나(2회) 오래된(72시간) 것은 자동으로 뺍니다. 커밋이 쓸데없이 늘지 않도록
-     '의미 있는 변화'(추가·삭제·실패 누적·6시간 이상 지난 갱신)만 state 에 반영합니다.
+  3) 프록시 풀: 통했던 프록시를 state["proxy_pool"] 에 기억했다가 다음 실행에서 먼저 씁니다
+     (맨 앞 = 마지막으로 이긴 프록시). 실패가 이어지거나(2회) 오래된(72시간) 것은 자동으로 뺍니다.
+     커밋이 쓸데없이 늘지 않도록 '의미 있는 변화'(추가·삭제·실패 누적·이긴 프록시 교체·
+     6시간 이상 지난 갱신)만 state 에 반영합니다.
   4) 장애 전환(failover): 실행 도중 쓰던 경로가 죽으면 예비 프록시 → 전체 재경주 순으로 갈아탑니다.
   5) 후보 확대: 무료 한국 프록시 목록 4곳을 병렬로 받고, SOCKS5/4 프록시도 씁니다(PySocks 필요).
 
@@ -56,7 +60,7 @@ try:
 except Exception:  # 없으면 HTTP 프록시만 사용
     HAS_SOCKS = False
 
-__version__ = "2026.11.05"
+__version__ = "2026.11.05.2"
 
 KST = timezone(timedelta(hours=9))
 DIRECT = "direct"
@@ -95,11 +99,6 @@ def _parse_min(s):
         return datetime.strptime(str(s)[:16], "%Y-%m-%d %H:%M").replace(tzinfo=KST)
     except Exception:
         return None
-
-
-def _ts(s):
-    dt = _parse_min(s)
-    return dt.timestamp() if dt else 0.0
 
 
 def _short_err(e):
@@ -255,7 +254,7 @@ class _Attempt(object):
 class Net(object):
     def __init__(self, state=None, headers=None, encoding=None, log=print, site="사이트",
                  pool_key="proxy_pool", sources=None,
-                 head_start=2.5, max_inflight=32, grace=0.8,
+                 head_start=2.5, lead_head=2.5, max_inflight=32, grace=0.8,
                  direct_timeout=(6, 20), proxy_timeout=(4, 12),
                  direct_cap=35.0, proxy_cap=25.0, max_bytes=8000000,
                  pool_max=12, pool_ttl_hours=72, refresh_minutes=360,
@@ -268,6 +267,7 @@ class Net(object):
         self.pool_key = pool_key
         self.sources = list(KR_PROXY_SOURCES if sources is None else sources)
         self.head_start = float(head_start)
+        self.lead_head = float(lead_head)
         self.max_inflight = int(max_inflight)
         self.grace = float(grace)
         self.direct_timeout = direct_timeout
@@ -319,8 +319,20 @@ class Net(object):
         return pool
 
     def _pool_order(self):
-        ordered = sorted(self.pool, key=lambda e: (e["f"], -_ts(e["ok"])))
+        """저장된 순서(맨 앞 = 마지막으로 이긴 프록시)를 유지하되 실패 기록이 있는 것은 뒤로."""
+        ordered = sorted(self.pool, key=lambda e: e["f"])   # 안정 정렬: 같은 f 끼리는 저장 순서 그대로
         return [e["p"] for e in ordered if e["p"] not in self.failed]
+
+    def _lead_candidate(self):
+        """이번 실행에서 프록시를 처음 쓰는 경주라면, 풀 맨 앞(최근 실패 없음)을 '혼자 먼저' 시도할 후보로."""
+        if self.lead_head <= 0 or self.ok_proxies or self.bad_proxies:
+            return None
+        order = self._pool_order()
+        if not order:
+            return None
+        first = order[0]
+        f = next((e["f"] for e in self.pool if e["p"] == first), 1)
+        return first if f == 0 else None
 
     def _ensure_fresh(self):
         if self._fresh_thread is not None:
@@ -411,7 +423,7 @@ class Net(object):
         if att.transport == DIRECT:
             kind = att.kind
             if kind == "bad" and att.status == 200:
-                # 직접 연결로 200 을 받았는데 목록을 못 읽음 → 구조 변경 근거(예전 봇과 같은 기준)
+                # 직접 연결로 200 을 받았는데 목록을 못 읽음 → 구조 변경 근거(인크루트·잡코리아 예전 봇과 같은 기준)
                 kind = "empty"
             self.diag["direct"] = kind
             self.diag["direct_info"] = att.info or (("HTTP %s" % att.status) if att.status else "")
@@ -429,7 +441,9 @@ class Net(object):
         반환: (winner_attempt|None, 함께 성공한 시도들, 걸린 초, 요약)
         - 각 시도는 별도 데몬 스레드에서 돌고, 이 루프는 결과만 기다립니다.
         - 응답을 찔끔찔끔 보내 읽기 타임아웃에 안 걸리는 프록시도 있어서, 시도별 상한(cap)+1초가
-          지나면 이 루프가 '포기'로 처리합니다(스레드는 뒤에서 혼자 끝나고 결과는 무시)."""
+          지나면 이 루프가 '포기'로 처리합니다(스레드는 뒤에서 혼자 끝나고 결과는 무시).
+        - 지난번에 이긴 프록시(lead)는 lead_head 동안 혼자 먼저 달리고, 실패하거나 시간이 지나면
+          나머지 풀과 새 후보가 출발합니다(rest)."""
         t0 = time.monotonic()
         end = t0 + max(1.0, float(budget))
         stop = threading.Event()
@@ -440,6 +454,7 @@ class Net(object):
         queued = set()
         n_pool = n_fresh = 0
         last_info = ""
+        lead, rest, rest_at = None, None, 0.0
 
         def enqueue(cands):
             n = 0
@@ -470,9 +485,19 @@ class Net(object):
                 # 직접 연결이 head_start 안에 못 끝냈거나 실패 → 프록시 출발 허용
                 if not proxies_open and (not direct_racing or now - t0 >= self.head_start):
                     proxies_open = True
-                    n_pool = enqueue(self._pool_order())
-                    self._ensure_fresh()
-                if proxies_open and not fresh_merged and self._fresh is not None:
+                    order = self._pool_order()
+                    lead = self._lead_candidate()
+                    if lead is not None:          # 지난번에 이긴 프록시부터 혼자
+                        n_pool = enqueue([lead])
+                        rest = [p for p in order if p != lead]
+                        rest_at = now + self.lead_head
+                    else:
+                        n_pool = enqueue(order)
+                    self._ensure_fresh()          # 새 후보 목록은 미리 받아 둠(선두가 실패하면 바로 투입)
+                if rest is not None and (now >= rest_at or lead in self.failed):
+                    n_pool += enqueue(rest)       # 선두가 실패했거나 lead_head 안에 못 끝냄 → 나머지 출발
+                    rest = None
+                if proxies_open and rest is None and not fresh_merged and self._fresh is not None:
                     n_fresh = enqueue(self._fresh)
                     fresh_merged = True
                 while pending and len(inflight) < self.max_inflight:
@@ -486,6 +511,9 @@ class Net(object):
                 if not inflight and not pending:
                     if not proxies_open:
                         direct_racing = False      # 다음 바퀴에서 프록시 개방
+                        continue
+                    if rest is not None:
+                        rest_at = 0.0              # 선두가 끝났는데 나머지가 대기 중 → 다음 바퀴에서 출발
                         continue
                     if not fresh_merged:
                         th = self._fresh_thread
@@ -545,7 +573,9 @@ class Net(object):
                     winner = a
                     break
         summary = {"pool": n_pool, "fresh": n_fresh, "launched": len(queued) - len(pending),
-                   "fresh_summary": self._fresh_summary, "last_info": last_info}
+                   "fresh_summary": self._fresh_summary, "last_info": last_info,
+                   "lead_alone": winner is not None and lead is not None
+                   and winner.transport == lead and rest is not None}
         return winner, extra, time.monotonic() - t0, summary
 
     # ── 공개 API ────────────────────────────────────────────
@@ -600,6 +630,10 @@ class Net(object):
         if w.transport == DIRECT:
             self.log("[net] 직접 연결 성공 %.1fs" % w.elapsed)
             return
+        if sm.get("lead_alone"):
+            self.log("[net] 직접=%s → 지난번 프록시 재사용: %.1fs 만에 %s 성공" % (
+                self._direct_desc(), dt, proxy_label(w.transport)))
+            return
         how = "예비 프록시로 전환" if failover else "프록시 경주"
         self.log("[net] 직접=%s → %s: 풀 %d·신규 %d개 중 %d개 출발, %.1fs 만에 %s 성공(예비 %d)%s" % (
             self._direct_desc(), how, sm.get("pool", 0), sm.get("fresh", 0), sm.get("launched", 0),
@@ -618,9 +652,10 @@ class Net(object):
     def finalize(self):
         """이번 실행 결과를 state 에 반영(의미 있는 변화만). 파일 저장은 봇이 합니다."""
         now = datetime.now(KST)
-        pool = {}
-        for e in self.pool:
+        pool, pos = {}, {}
+        for i, e in enumerate(self.pool):
             pool[e["p"]] = dict(e)
+            pos[e["p"]] = i
         for p in self.ok_proxies:
             e = pool.get(p)
             if e is None:
@@ -640,7 +675,19 @@ class Net(object):
             if e["f"] >= 2 or dt is None or now - dt > timedelta(hours=self.pool_ttl_hours):
                 continue
             keep.append(e)
-        keep.sort(key=lambda e: (e["f"], -_ts(e["ok"])))
+        # 순서: ① 이번에 이긴 프록시(다음 실행의 '선두') ② 이번에 통한 것(발견 순) ③ 이번에 안 쓴 것(기존 순서)
+        #       같은 무리 안에서는 실패 기록 없는 것 먼저. 아무 일 없던 실행은 순서도 그대로 → state 변화 없음.
+        lead = self.winner if self.winner not in (None, DIRECT) else None
+        okpos = dict((p, i) for i, p in enumerate(self.ok_proxies))
+
+        def rank(e):
+            p = e["p"]
+            if p == lead:
+                return (0, 0, 0)
+            if p in okpos:
+                return (e["f"], 1, okpos[p])
+            return (e["f"], 2, pos.get(p, 0))
+        keep.sort(key=rank)
         keep = keep[:self.pool_max]
         if keep:
             if keep != self.state.get(self.pool_key):
