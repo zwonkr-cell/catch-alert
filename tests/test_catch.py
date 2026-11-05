@@ -6,6 +6,7 @@
 import os
 import sys
 import json
+import time
 import tempfile
 import threading
 import unittest
@@ -92,6 +93,7 @@ class CatchTest(unittest.TestCase):
         self.sheet = []
         ca.log_to_sheet = lambda p: self.sheet.append(p)
         self._orig_sleep = ca.time.sleep
+        self.patch("_T0", time.monotonic())          # 전송 시간 상한 기준을 테스트마다 새로(긴 테스트 묶음에서도 안정)
         self.cfg = {"bot_token": "x", "chat_ids": ["1"], "api_url": self.api, "request_timeout": 10,
                     "disable_web_page_preview": True, "weekday_full": True,
                     "send_summary_on_first_run": True, "max_notify_per_run": 20}
