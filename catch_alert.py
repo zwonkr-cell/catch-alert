@@ -6,7 +6,8 @@
 설정한 필터(config.json 의 api_url)에 새로 올라온 공고만 골라
 텔레그램으로 지정한 수신자들에게 알림을 보냅니다.
 
-- 표준 라이브러리만 사용 (pip 설치 불필요)
+- 필요 패키지: requests (+ PySocks: SOCKS 프록시까지 사용) → pip install -r requirements.txt
+- 수집 경로는 netkit.py(직접 연결 + 한국 프록시 '경주')가 가장 빠른 것을 고름
 - 이미 알린 공고는 seen_ids.json 에 기록해 중복 알림 방지
 - 첫 실행은 "무음 시딩": 기존 공고를 알림 없이 등록만 함
 
@@ -26,12 +27,14 @@ import html
 import logging
 import argparse
 import traceback
+import http.client
 from datetime import datetime, timezone, timedelta
 from urllib import request, parse
 from urllib.error import URLError, HTTPError
 
-from concurrent import futures  # 프록시 후보 병렬 탐색
-import requests  # 캐치 수집(프록시 지원)용. 텔레그램 전송은 표준 urllib 유지.
+import requests  # 구글시트 기록용. 캐치 수집은 netkit(requests 기반), 텔레그램 전송은 표준 urllib 유지.
+
+from netkit import Net, FetchError  # 직접 연결 + 한국 프록시 '경주'(같은 폴더의 netkit.py)
 
 try:
     import msvcrt  # Windows 단일 인스턴스 락용
@@ -391,12 +394,13 @@ def maybe_heartbeat(cfg, state, collected, new_count):
 
 
 # ─────────────────────────────────────────────────────────────
-# HTTP: 직접 연결 → 실패(해외 IP 403) 시 한국 프록시 자동 탐색
+# HTTP: 직접 연결 + 한국 프록시 '경주' (netkit.py)
 #   catch.co.kr 는 해외/클라우드 IP 를 403 으로 차단합니다.
-#   - 로컬(한국 IP): 직접 연결로 동작 (프록시 불필요)
-#   - GitHub Actions(해외 IP): 매 실행마다 최신 무료 한국 프록시 목록을 받아
-#     캐치에 실제로 통하는 프록시를 찾아 그 실행 내내 사용합니다.
-#   프록시를 못 찾으면 이번 실행은 실패(exit 1)로 표시되고, 다음 정각에 재시도합니다.
+#   - 로컬(한국 IP): 직접 연결로 바로 성공 (프록시 안 씀)
+#   - GitHub Actions(해외 IP): 직접이 403 이면 즉시 '지난번에 통한 프록시(풀) + 무료 한국 프록시
+#     목록 4곳(SOCKS 포함)'을 최대 32개 동시에 시도해 가장 먼저 열리는 경로를 씁니다.
+#     실행 도중 프록시가 죽으면 예비 프록시 → 재경주 순으로 바로 갈아탑니다(예전: 2·4초 쉬며 같은 프록시 재시도).
+#   그래도 못 찾으면 이번 실행은 건너뛰고 다음 실행에서 재시도합니다.
 #   (누락 없음: seen_ids 로 중복 관리하므로 놓친 공고는 다음 성공 실행에서 알림)
 # ─────────────────────────────────────────────────────────────
 REQ_HEADERS = {
@@ -404,199 +408,79 @@ REQ_HEADERS = {
     "Referer": "https://www.catch.co.kr/",
     "Accept": "application/json, text/plain, */*",
 }
-# 무료 한국 프록시 목록. 한 곳이 죽어도 나머지로 버티도록 여러 곳을 본다.
-# (2026-10 실측 수집량: geonode 25 · proxifly 56(http/https만) · proxyscrape 11 → 합집합 약 92개.
-#  이전 2곳 조합은 27개뿐이라 한국 낮처럼 죽은 프록시가 많을 때 빈손으로 끝나는 일이 잦았다.)
-PROXY_SOURCES = [
-    # 최근 확인 순 한국 목록
-    "https://proxylist.geonode.com/api/proxy-list?country=KR&protocols=http%2Chttps"
-    "&limit=100&page=1&sort_by=lastChecked&sort_type=desc",
-    # 국가별로 갈라 매시 갱신되는 목록 — 한국 http/https 가 가장 많이 나온다
-    "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/countries/KR/data.txt",
-    # proxyscrape 신 API · 구 API(폴백)
-    "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies"
-    "&country=kr&protocol=http&proxy_format=ipport&format=text",
-    "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=kr",
-]
-MAX_PROXY_TRIES = 120     # 병렬로 재니 후보를 넉넉히 본다
-PROXY_TIMEOUT = 6
-PROXY_WORKERS = 16        # 동시에 찔러 보는 수
-PROXY_DEADLINE = 75       # 탐색 전체 제한(초)
-
-# "http://1.2.3.4:8080" · "1.2.3.4:8080" · "1.2.3.4:8080:KR:..." 를 모두 받는다.
-_IPPORT_RE = re.compile(r"^(?:(\w+)://)?(\d{1,3}(?:\.\d{1,3}){3}):(\d{2,5})")
 
 
-def _parse_proxy_line(ln):
-    """프록시 한 줄에서 ip:port 를 뽑는다. socks 는 requests 의 http 프록시로
-       쓸 수 없으므로 버린다(proxifly 한국 목록은 절반 이상이 socks5 다)."""
-    m = _IPPORT_RE.match(ln.strip())
-    if not m:
-        return None
-    if m.group(1) and m.group(1).lower() not in ("http", "https"):
-        return None
-    return "%s:%s" % (m.group(2), m.group(3))
-
-
-def _small_test_url(cfg):
-    parts = parse.urlsplit(cfg["api_url"])
-    qs = dict(parse.parse_qsl(parts.query, keep_blank_values=True))
-    qs["pageSize"] = "5"
-    qs["curpage"] = "1"
-    return parse.urlunsplit((parts.scheme, parts.netloc, parts.path,
-                             parse.urlencode(qs), parts.fragment))
-
-
-def get_kr_proxy_candidates():
-    cands = []
-    for url in PROXY_SOURCES:
-        try:
-            r = requests.get(url, timeout=12)
-            if "geonode" in url:
-                for p in r.json().get("data", []):
-                    cands.append(f"{p['ip']}:{p['port']}")
-            else:
-                for ln in r.text.splitlines():
-                    one = _parse_proxy_line(ln)
-                    if one:
-                        cands.append(one)
-        except Exception as e:
-            log.warning("프록시 목록 수집 실패(%s): %s", url[:45], e)
-    uniq = list(dict.fromkeys(cands))  # 순서 유지 dedupe
-    log.info("프록시 후보 %d개 수집(소스 %d곳)", len(uniq), len(PROXY_SOURCES))
-    return uniq
-
-
-def _proxy_dict(p):
-    return {"http": f"http://{p}", "https": f"http://{p}"}
-
-
-def _probe_proxy(p, test_url):
-    """이 프록시로 캐치가 실제로 열리는지 한 번 찔러 본다."""
+def _validate_catch(status, text):
+    """netkit 용 응답 검증(작업 스레드에서 호출). ('ok', data) | (종류, 사유)"""
+    if status in (403, 429):
+        return "blocked", "HTTP %d" % status
+    if status != 200:
+        return "bad", "HTTP %d" % status
     try:
-        r = requests.get(test_url, headers=REQ_HEADERS, proxies=_proxy_dict(p),
-                         timeout=PROXY_TIMEOUT)
-        if r.status_code == 200 and "recruitData" in r.text:
-            return p
-    except Exception:
-        pass
-    return None
+        data = json.loads(text)
+    except ValueError:
+        return "bad", "JSON 아님(%dB)" % len(text)
+    if not isinstance(data, dict):
+        return "bad", "JSON 형식이 다름"
+    if "recruitData" not in data:
+        return "empty", "recruitData 없음(API 응답 형식 변경 의심)"
+    rd = data.get("recruitData")
+    if rd is not None and not isinstance(rd, list):
+        return "empty", "recruitData 형식 변경(%s)" % type(rd).__name__
+    return "ok", data
 
 
-def _find_working_proxy(cands, test_url):
-    """후보를 한꺼번에 찔러 먼저 열리는 것을 쓴다.
-       하나씩 순서대로 8초를 기다리면 40개에 최대 5분이라, 죽은 프록시가 많은
-       한국 낮 시간대에는 시간만 쓰고 빈손으로 끝나는 일이 잦았다."""
-    if not cands:
-        return None
-    ex = futures.ThreadPoolExecutor(max_workers=PROXY_WORKERS)
-    try:
-        jobs = [ex.submit(_probe_proxy, p, test_url) for p in cands]
-        try:
-            for fut in futures.as_completed(jobs, timeout=PROXY_DEADLINE):
-                got = fut.result()
-                if got:
-                    return got
-        except futures.TimeoutError:
-            log.warning("프록시 탐색 %d초 안에 통하는 것을 못 찾았습니다", PROXY_DEADLINE)
-    finally:
-        ex.shutdown(wait=False, cancel_futures=True)
-    return None
+def make_net(cfg, state):
+    return Net(state, headers=REQ_HEADERS, encoding="utf-8-sig", log=log.info, site="캐치",
+               direct_timeout=(6, cfg["request_timeout"]))
 
 
-LAST_TRANSPORT = "direct"   # 이번 실행의 연결 방식 ("direct" | "proxy:IP")
-
-
-def resolve_transport(cfg, state=None):
-    """반환: proxies dict(프록시 사용) 또는 None(직접 연결). 둘 다 불가하면 예외."""
-    global LAST_TRANSPORT
-    test_url = _small_test_url(cfg)
-    # 1) 직접 연결 (로컬 한국 IP 는 이걸로 끝)
-    try:
-        r = requests.get(test_url, headers=REQ_HEADERS, timeout=cfg["request_timeout"])
-        if r.status_code == 200 and "recruitData" in r.text:
-            log.info("직접 연결 성공 (프록시 불필요)")
-            LAST_TRANSPORT = "direct"
-            return None
-        log.warning("직접 연결 status=%s → 한국 프록시 탐색", r.status_code)
-    except Exception as e:
-        log.warning("직접 연결 실패(%s) → 한국 프록시 탐색", e)
-    # 2) 지난 실행에서 통하던 프록시부터 — 무료 프록시도 몇 시간은 살아 있다.
-    #    목록을 새로 받아 수십 개를 찌르는 것보다 훨씬 빠르고, 낮에 특히 효과가 크다.
-    last = (state or {}).get("last_proxy")
-    if last and _probe_proxy(last, test_url):
-        log.info("직전 프록시 재사용: %s", last)
-        LAST_TRANSPORT = f"proxy:{last}"
-        return _proxy_dict(last)
-    # 3) 목록에서 새로 탐색(병렬)
-    cands = [c for c in get_kr_proxy_candidates() if c != last][:MAX_PROXY_TRIES]
-    log.info("한국 프록시 후보 %d개를 %d개씩 동시에 탐색...", len(cands), PROXY_WORKERS)
-    found = _find_working_proxy(cands, test_url)
-    if found:
-        log.info("프록시 사용: %s", found)
-        LAST_TRANSPORT = f"proxy:{found}"
-        if state is not None:
-            state["last_proxy"] = found
-            state["last_proxy_at"] = _now_iso()
-        return _proxy_dict(found)
-    if state is not None:
-        state.pop("last_proxy", None)
-    raise RuntimeError("작동하는 한국 프록시를 찾지 못했습니다(캐치 접근 불가).")
-
-
-def handle_transport(cfg, state):
+def handle_transport(net, state):
     """
     연결 방식(직접↔프록시) 변화를 기록. 프록시 우회는 정상 동작의 일부이므로
     텔레그램 알림은 보내지 않는다(2026-07 사용자 요청: 프록시 알림 전면 중단, 로그만).
     """
-    cur = LAST_TRANSPORT
+    cur = net.label
+    if not cur:
+        return
     prev = state.get("transport")
     if prev is not None and cur != prev:
         log.info("연결 방식 변경: %s → %s (알림 없음)", prev, cur)
     state["transport"] = cur
 
 
-def http_get_json(url, timeout, proxies=None, tries=3):
-    last_err = None
-    to = timeout if proxies is None else PROXY_TIMEOUT
-    for attempt in range(1, tries + 1):
-        try:
-            r = requests.get(url, headers=REQ_HEADERS, proxies=proxies, timeout=to)
-            if r.status_code == 200:
-                # BOM 방어
-                return json.loads(r.content.decode("utf-8-sig", errors="replace"))
-            if 400 <= r.status_code < 500 and r.status_code != 429:
-                log.error("캐치 API HTTP %s (재시도 안 함)", r.status_code)
-                raise RuntimeError(f"캐치 API HTTP {r.status_code}")
-            log.warning("캐치 API 오류(HTTP %s), %d/%d 재시도", r.status_code, attempt, tries)
-        except (requests.RequestException, json.JSONDecodeError) as e:
-            last_err = e
-            log.warning("캐치 API 네트워크/파싱 오류(%s), %d/%d 재시도", e, attempt, tries)
-        if attempt < tries:
-            time.sleep(2 ** attempt)   # 2s, 4s
-    raise last_err or RuntimeError("캐치 수집 실패")
-
-
-def fetch_all(cfg, state=None):
-    """
-    직접/프록시 경로를 정한 뒤, api_url 의 필터를 유지하되 pageSize/curpage 를
-    조절해 전체 공고를 수집. intTotalRecordCount 를 맹신하지 않고, 덜 찬(또는 빈)
-    페이지가 나오면 멈춘다는 규칙으로 견고하게 페이징.
-    """
-    transport = resolve_transport(cfg, state)   # None(직접) 또는 proxies dict
-
+def _page_url(cfg, page):
     parts = parse.urlsplit(cfg["api_url"])
     qs = dict(parse.parse_qsl(parts.query, keep_blank_values=True))
     qs["pageSize"] = str(PAGE_SIZE)
+    qs["curpage"] = str(page)
+    return parse.urlunsplit((parts.scheme, parts.netloc, parts.path,
+                             parse.urlencode(qs), parts.fragment))
 
+
+def fetch_all(cfg, net):
+    """
+    api_url 의 필터를 유지하되 pageSize/curpage 를 조절해 전체 공고를 수집.
+    intTotalRecordCount 를 맹신하지 않고, 덜 찬(또는 빈) 페이지가 나오면 멈춘다는 규칙으로 견고하게 페이징.
+    반환: (items, total, complete)
+      complete=False → 1페이지는 받았지만 뒤 페이지를 못 받음(받은 만큼만 처리, 나머지는 다음 실행에서)
+    """
     items = []
     total = None
     for page in range(1, 21):  # 안전상 최대 20페이지(=2000건)
-        qs["curpage"] = str(page)
-        url = parse.urlunsplit((parts.scheme, parts.netloc, parts.path,
-                                parse.urlencode(qs), parts.fragment))
-        data = http_get_json(url, cfg["request_timeout"], proxies=transport)
-        batch = data.get("recruitData", []) or []
+        try:
+            data, _via = net.get(_page_url(cfg, page), _validate_catch,
+                                 budget=100 if page == 1 else 45)
+        except FetchError as e:
+            if page == 1:
+                if e.kind == "structure":
+                    raise RuntimeError("캐치 API 응답은 정상(200)이지만 공고 목록(recruitData)을 "
+                                       "읽지 못했습니다 - 구조 변경 의심") from None
+                raise RuntimeError("작동하는 한국 프록시를 찾지 못했습니다(캐치 접근 불가).") from None
+            log.warning("%d페이지 수집 실패(%s) → 받은 %d건만 처리하고 나머지는 다음 실행에서 확인",
+                        page, e.kind, len(items))
+            return items, (total if total is not None else len(items)), False
+        batch = data.get("recruitData") or []
         if total is None:
             try:
                 total = int(data.get("intTotalRecordCount", 0) or 0)
@@ -606,7 +490,7 @@ def fetch_all(cfg, state=None):
         # 페이지가 가득 차지 않았으면 마지막 페이지 → 종료
         if len(batch) < PAGE_SIZE:
             break
-    return items, (total if total is not None else len(items))
+    return items, (total if total is not None else len(items)), True
 
 
 # ─────────────────────────────────────────────────────────────
@@ -731,7 +615,8 @@ def tg_send(token, chat_id, text, cfg, tries=3):
     for attempt in range(1, tries + 1):
         try:
             ok, code, desc = _post_telegram(token, chat_id, text, cfg, use_html=True)
-        except (URLError, TimeoutError, json.JSONDecodeError) as e:
+        except (OSError, ValueError, http.client.HTTPException) as e:
+            # URLError·타임아웃·연결 끊김(RemoteDisconnected 등)·JSON 오류 모두 '일시 오류'로 재시도
             log.warning("텔레그램 네트워크 오류(%s), %d/%d 재시도", e, attempt, tries)
             if attempt < tries:
                 time.sleep(2 * attempt)
@@ -747,10 +632,11 @@ def tg_send(token, chat_id, text, cfg, tries=3):
             raise TelegramAuthError(desc or "Unauthorized (bot token 오류)")
 
         if code == 429:
-            # description 없이 code 만 온 경우 대비: 기본 3초
-            retry_after = 3
+            # 텔레그램이 알려준 대기 시간("retry after N")을 따름. 없으면 기본 3초
+            m = re.search(r"retry after (\d+)", dl)
+            retry_after = min(int(m.group(1)), 60) if m else 3
             log.warning("텔레그램 429 Too Many Requests, %d초 대기", retry_after)
-            time.sleep(retry_after)
+            time.sleep(retry_after + 0.5)
             continue
 
         # 이 수신자에게 영구적으로 도달 불가 → seen 처리해도 됨(재시도 무의미)
@@ -773,8 +659,9 @@ def tg_send(token, chat_id, text, cfg, tries=3):
                         chat_id, desc)
             ok2, desc2 = False, desc
             try:
-                ok2, _, desc2 = _post_telegram(token, chat_id, text, cfg, use_html=False)
-            except (URLError, TimeoutError, json.JSONDecodeError):
+                plain = html.unescape(re.sub(r"<[^>]+>", "", text))   # 태그 제거한 일반 텍스트
+                ok2, _, desc2 = _post_telegram(token, chat_id, plain, cfg, use_html=False)
+            except (OSError, ValueError, http.client.HTTPException):
                 pass
             if ok2:
                 return "ok"
@@ -821,30 +708,67 @@ def sort_key_oldest_first(it):
 
 
 def run(cfg, state, dry_run=False):
+    net = make_net(cfg, state)
+    sheet_rows = []
+    try:
+        _run(cfg, state, net, sheet_rows, dry_run)
+    finally:
+        net.finalize()             # 통한/죽은 프록시를 풀(bot_state.json)에 반영
+        log.info(net.summary())
+        if not dry_run:
+            for p in sheet_rows:   # 시트 기록은 알림을 모두 보낸 뒤에(알림 지연 방지)
+                log_to_sheet(p)
+
+
+def _sheet_payload(it, rid, cfg, scraped_ts):
+    _extra = ", ".join(str(it.get(k)) for k in
+                       ("Depth", "PopularCategory",
+                        "CareerGubunCode", "GubunCode", "RecruitCategory")
+                       if it.get(k))
+    # 수시채용(채용시/수시/상시)은 마감일자 텍스트로 보내 시트에서 '공고일+15일' 유효처리되게 함.
+    _apply_code = str(it.get("ApplyEndCode") or "")
+    if any(k in _apply_code for k in ("채용시", "수시", "상시")):
+        _deadline = _apply_code
+    else:
+        _deadline = format_deadline(it, cfg["weekday_full"]) or _apply_code
+    return {
+        "bot": "catch",
+        "scraped_at": scraped_ts,
+        "company": it.get("CompName") or "",
+        "region": it.get("WorkArea") or "",
+        "title": it.get("RecruitTitle") or "",
+        "link": DETAIL_URL_FMT.format(rid=rid),
+        "deadline": _deadline,
+        "extra": _extra,
+    }
+
+
+def _run(cfg, state, net, sheet_rows, dry_run):
     scraped_ts = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
     seen, is_fresh = load_seen()
 
     try:
-        items, total = fetch_all(cfg, state)
+        items, total, complete = fetch_all(cfg, net)
     except Exception:
-        # 프록시 포함 수집 실패 → main() 이 오류 원문을 텔레그램으로 노티하도록 재전파.
+        # 프록시 포함 수집 실패 → main() 이 오류를 분류해 노티하도록 재전파.
         # seen 은 그대로라 다음 성공 실행에서 놓친 공고까지 알림됨(누락 없음).
         log.error("공고 수집 실패(직접+프록시 모두)")
         raise
 
-    log.info("수집 완료: %d건 (총 %d건 보고됨)", len(items), total)
+    log.info("수집 완료: %d건 (총 %d건 보고됨)%s", len(items), total,
+             "" if complete else " — 일부 페이지 누락, 받은 만큼만 처리")
 
     state["consec_err"] = {}   # 수집 성공 → 연속 오류 카운터 리셋
     if not dry_run:
-        handle_transport(cfg, state)   # 연결 방식(직접↔프록시) 변화 노티
+        handle_transport(net, state)   # 연결 방식(직접↔프록시) 변화 기록(알림 없음)
 
     valid = [it for it in items if it.get("RecruitID") is not None]
     current_ids = {item_id(it) for it in valid}
 
     # ── 첫 실행 / 상태 손상 → 무음 시딩
     if is_fresh:
-        if not current_ids:
-            log.warning("초기 시딩인데 수집 결과가 0건입니다(일시적 API 이상 의심). "
+        if not current_ids or not complete:
+            log.warning("초기 시딩인데 수집 결과가 비었거나 일부 페이지가 빠졌습니다(일시적 이상 의심). "
                         "상태파일을 만들지 않고 이번 실행을 건너뜁니다. 다음 실행에서 재시도합니다.")
             return
         if not dry_run:
@@ -882,51 +806,35 @@ def run(cfg, state, dry_run=False):
                     len(new_items), len(to_send), len(deferred))
 
     newly_done = set()
-    for it in to_send:
-        rid = item_id(it)
-        text = build_message(it, cfg, scraped_ts)
-        if dry_run:
-            log.info("[DRY-RUN] 전송 예정 RecruitID=%s\n%s\n%s\n%s",
-                     rid, "-" * 40, text, "-" * 40)
-            newly_done.add(rid)
-            continue
-        if notify_recipients(cfg["bot_token"], cfg["chat_ids"], text, cfg):
-            newly_done.add(rid)
-            _extra = ", ".join(str(it.get(k)) for k in
-                               ("Depth", "PopularCategory",
-                                "CareerGubunCode", "GubunCode", "RecruitCategory")
-                               if it.get(k))
-            # 수시채용(채용시/수시/상시)은 마감일자 텍스트로 보내 시트에서 '공고일+15일' 유효처리되게 함.
-            _apply_code = str(it.get("ApplyEndCode") or "")
-            if any(k in _apply_code for k in ("채용시", "수시", "상시")):
-                _deadline = _apply_code
+    try:
+        for it in to_send:
+            rid = item_id(it)
+            text = build_message(it, cfg, scraped_ts)
+            if dry_run:
+                log.info("[DRY-RUN] 전송 예정 RecruitID=%s\n%s\n%s\n%s",
+                         rid, "-" * 40, text, "-" * 40)
+                newly_done.add(rid)
+                continue
+            if notify_recipients(cfg["bot_token"], cfg["chat_ids"], text, cfg):
+                newly_done.add(rid)
+                sheet_rows.append(_sheet_payload(it, rid, cfg, scraped_ts))
+                log.info("전송 완료 RecruitID=%s (%s)", rid, it.get("CompName"))
             else:
-                _deadline = format_deadline(it, cfg["weekday_full"]) or _apply_code
-            log_to_sheet({
-                "bot": "catch",
-                "scraped_at": scraped_ts,
-                "company": it.get("CompName") or "",
-                "region": it.get("WorkArea") or "",
-                "title": it.get("RecruitTitle") or "",
-                "link": DETAIL_URL_FMT.format(rid=rid),
-                "deadline": _deadline,
-                "extra": _extra,
-            })
-            log.info("전송 완료 RecruitID=%s (%s)", rid, it.get("CompName"))
-        else:
-            log.warning("전송 실패(일시적) RecruitID=%s → 다음 실행 때 재시도", rid)
-        time.sleep(0.7)  # 공고 간 간격
+                log.warning("전송 실패(일시적) RecruitID=%s → 다음 실행 때 재시도", rid)
+            time.sleep(0.7)  # 공고 간 간격
+    finally:
+        # 도중에 예외가 나도 이미 보낸 공고는 반드시 기록(다음 실행 중복 전송 방지)
+        if not dry_run and newly_done:
+            if save_seen(seen | newly_done):
+                log.info("상태 저장: 이번에 %d건 추가 (누적 %d건)",
+                         len(newly_done), len(seen | newly_done))
+            note_activity(state)   # 새 공고 전송 = 활동 → 하트비트 타이머 리셋
 
-    if not dry_run and newly_done:
-        if save_seen(seen | newly_done):
-            log.info("상태 저장: 이번에 %d건 추가 (누적 %d건)",
-                     len(newly_done), len(seen | newly_done))
-        note_activity(state)   # 새 공고 전송 = 활동 → 하트비트 타이머 리셋
-        # 미뤄둔 공고가 있으면 안내 1건
-        if deferred:
-            notice = (f"ℹ️ 조건에 맞는 새 공고가 많아 {len(newly_done)}건을 먼저 보냈어요. "
-                      f"남은 {len(deferred)}건은 다음 정각에 이어서 알려드릴게요.")
-            notify_recipients(cfg["bot_token"], cfg["chat_ids"], notice, cfg)
+    # 미뤄둔 공고가 있으면 안내 1건
+    if not dry_run and newly_done and deferred:
+        notice = (f"ℹ️ 조건에 맞는 새 공고가 많아 {len(newly_done)}건을 먼저 보냈어요. "
+                  f"남은 {len(deferred)}건은 다음 실행 때 이어서 알려드릴게요.")
+        notify_recipients(cfg["bot_token"], cfg["chat_ids"], notice, cfg)
 
 
 def send_test(cfg):
@@ -942,7 +850,7 @@ def send_test(cfg):
 def resend_latest(cfg, n):
     """디버깅용: 상태와 무관하게 최신 n건(RecruitID 내림차순)을 강제 전송."""
     try:
-        items, _ = fetch_all(cfg)
+        items, _, _ = fetch_all(cfg, make_net(cfg, {}))
     except Exception as e:
         log.error("공고 수집 실패로 재전송을 건너뜁니다: %s", e)
         return
@@ -994,10 +902,13 @@ def main():
     except Exception as e:
         # 오류 원문을 텔레그램으로 노티(같은 오류는 12h 1회). Actions 이메일 스팸 방지 위해 exit 0(green).
         log.exception("예상치 못한 오류: %s", e)
-        try:
-            notify_error(cfg, state, traceback.format_exc())
-        except Exception as ne:
-            log.error("오류 노티 전송 실패: %s", ne)
+        if args.dry_run:
+            log.info("[DRY-RUN] 오류 노티는 보내지 않습니다.")
+        else:
+            try:
+                notify_error(cfg, state, traceback.format_exc())
+            except Exception as ne:
+                log.error("오류 노티 전송 실패: %s", ne)
     finally:
         if not args.dry_run:
             save_bot_state(state)
