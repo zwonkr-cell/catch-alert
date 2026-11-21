@@ -4,9 +4,9 @@
   "last_error_at": "2026-07-20 21:13:33",
   "consec_err": {
     "proxy": 1,
-    "network": 1
+    "network": 2
   },
   "transport": "proxy:217.142.139.207:8085",
-  "last_proxy_at": "2026-11-21 16:41:08",
-  "last_proxy": "112.186.12.95:3128"
+  "last_proxy_at": "2026-11-21 16:42:21",
+  "last_proxy": "14.34.180.21:38157"
 }
