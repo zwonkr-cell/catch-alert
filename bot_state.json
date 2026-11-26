@@ -1,12 +1,9 @@
 {
-  "last_activity_at": "2026-11-25 15:33:57",
+  "last_activity_at": "2026-11-26 12:08:29",
   "last_error_sig": "requests.exceptions.ProxyError: HTTPSConnectionPool(host='www.catch.co.kr', port=443): Max retries exceeded with url: /a",
   "last_error_at": "2026-07-20 21:13:33",
-  "consec_err": {
-    "proxy": 7,
-    "network": 1
-  },
-  "transport": "proxy:101.79.22.162:80",
-  "last_proxy_at": "2026-11-26 12:06:20",
-  "last_proxy": "14.34.180.21:38157"
+  "consec_err": {},
+  "transport": "proxy:220.81.123.23:48678",
+  "last_proxy_at": "2026-11-26 12:07:51",
+  "last_proxy": "220.81.123.23:48678"
 }
